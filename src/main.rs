@@ -1,3 +1,6 @@
+mod lichess;
+
 fn main() {
-    println!("Hello, world!");
+    let mut lichess = lichess::LichessClient::new();
+    lichess.listen();
 }
