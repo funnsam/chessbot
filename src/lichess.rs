@@ -2,7 +2,7 @@ use tokio_util::io::StreamReader;
 use tokio::io::AsyncBufReadExt;
 use reqwest::*;
 use futures::stream::TryStreamExt;
-use std::sync::{mpsc::*, Arc, Mutex};
+use std::sync::{mpsc::*, Arc};
 use std::str::FromStr;
 use crate::bot::*;
 
@@ -78,9 +78,10 @@ impl LichessClient {
                                 continue;
                             },
                         };
-                        let board = chess::Board::from_str(game["fen"].as_str().unwrap()).unwrap();
+                        let fen = game["fen"].as_str().unwrap();
+                        let board = chess::Board::from_str(fen).unwrap();
 
-                        info!("started a game with `{}` (id: `{}`)", user, id);
+                        info!("started a game with `{}` (id: `{}`, fen: `{}`)", user, id, fen);
 
                         let game = LichessGame { id, color, board };
                         self.games.send(game).unwrap();
@@ -125,6 +126,34 @@ impl LichessClient {
 
                 match event["type"].as_str() {
                     Some("gameFull") => {
+                        let state = &event["state"];
+                        events.send(GameEvent::FullGameState {
+                            moves: state["moves"].as_str().unwrap().to_string(),
+                            wtime: TimeControl {
+                                time_left: state["wtime"].as_usize().unwrap(),
+                                time_incr: state["winc"].as_usize().unwrap(),
+                            },
+                            btime: TimeControl {
+                                time_left: state["btime"].as_usize().unwrap(),
+                                time_incr: state["binc"].as_usize().unwrap(),
+                            },
+                            status: state["status"].as_str().unwrap().to_string(),
+                        }).unwrap();
+                    },
+                    Some("gameState") => {
+                        let state = &event;
+                        events.send(GameEvent::NextGameState {
+                            moves: state["moves"].as_str().unwrap().to_string(),
+                            wtime: TimeControl {
+                                time_left: state["wtime"].as_usize().unwrap(),
+                                time_incr: state["winc"].as_usize().unwrap(),
+                            },
+                            btime: TimeControl {
+                                time_left: state["btime"].as_usize().unwrap(),
+                                time_incr: state["binc"].as_usize().unwrap(),
+                            },
+                            status: state["status"].as_str().unwrap().to_string(),
+                        }).unwrap();
                     },
                     Some(typ) => {
                         warn!("got unknown type of event `{}`", typ);
@@ -140,6 +169,17 @@ impl LichessClient {
     }
 
     async fn send_game(self: Arc<Self>, game_id: String, moves: Receiver<chess::ChessMove>) {
+        let mut headers = header::HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            header::HeaderValue::from_str(
+                &format!("Bearer {}", self.api_token)
+            ).unwrap()
+        );
+        let client = Client::builder()
+            .default_headers(headers)
+            .build().unwrap();
+
         while let Ok(m) = moves.recv() {
             let mut m_uci = format!("{}{}", m.get_source(), m.get_dest());
             m_uci += match m.get_promotion() {
@@ -149,11 +189,22 @@ impl LichessClient {
                 Some(chess::Piece::Knight) => "n",
                 _ => "",
             };
+
+            let resp = client.execute(
+                client.post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
+                    .build().unwrap()
+            ).await.unwrap();
+
+            if !resp.status().is_success() {
+                let reason = json::parse(&resp.text().await.unwrap()).unwrap();
+                let reason = reason["error"].as_str().unwrap();
+                warn!("move {} invalid ({})", m_uci, reason);
+            }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LichessGame {
     pub id: String,
     pub color: chess::Color,
@@ -163,12 +214,12 @@ pub struct LichessGame {
 pub struct GamesManager {
     incoming_games: Receiver<LichessGame>,
 
-    games: Vec<Game>,
+    // games: Vec<Game>,
 }
 
 impl GamesManager {
     pub fn new(incoming_games: Receiver<LichessGame>) -> Self {
-        Self { incoming_games, games: Vec::new() }
+        Self { incoming_games }
     }
 
     pub fn start(&mut self, client: Arc<LichessClient>) {
@@ -191,11 +242,19 @@ impl GamesManager {
                 tokio::spawn(async move { client.send_game(id, moves_r).await });
             }
 
-            self.games.push(Game {
+            tokio::spawn(async move {
+                Game {
+                    lichess: game,
+                    incoming_events: event_r,
+                    outgoing_moves: moves_t,
+                }.run();
+            });
+
+            /* self.games.push(Game {
                 lichess: game,
                 incoming_events: event_r,
                 outgoing_moves: moves_t,
-            });
+            }); */
         }
     }
 }
