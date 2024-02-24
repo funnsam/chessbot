@@ -1,5 +1,4 @@
-use tokio::spawn;
-use std::sync::Mutex;
+use std::sync::Arc;
 
 #[macro_use]
 mod log;
@@ -9,9 +8,12 @@ mod lichess;
 #[tokio::main]
 async fn main() {
     let (lichess, games) = lichess::LichessClient::new();
-    let lichess = Mutex::new(lichess);
-    tokio::spawn(async { lichess::LichessClient::listen(lichess).await });
+    let lichess = Arc::new(lichess);
+    {
+        let lichess = Arc::clone(&lichess);
+        tokio::spawn(async { lichess.listen().await });
+    }
 
     let mut gm = lichess::GamesManager::new(games);
-    gm.start();
+    gm.start(lichess);
 }
