@@ -41,7 +41,8 @@ impl Game {
         while let Ok(event) = self.incoming_events.recv() {
             match event {
                 GameEvent::FullGameState { moves, wtime, btime, status } => {
-                    info!("game `{}` eval {}", &self.lichess.id, eval::evaluate(&self.lichess));
+                    let eval = eval::evaluate(&self.lichess.board);
+                    info!("game `{}` eval {}", &self.lichess.id, eval);
 
                     if self.lichess.board.side_to_move() == self.lichess.color {
                         info!("start search");
@@ -54,7 +55,8 @@ impl Game {
                     let m = move_from_uci(moves.split_whitespace().last().unwrap());
                     self.lichess.board = self.lichess.board.make_move_new(m);
 
-                    info!("game `{}` eval {}", &self.lichess.id, eval::evaluate(&self.lichess));
+                    let eval = eval::evaluate(&self.lichess.board);
+                    info!("game `{}` eval {}", &self.lichess.id, eval);
 
                     if self.lichess.board.side_to_move() == self.lichess.color {
                         info!("start search");
@@ -66,6 +68,8 @@ impl Game {
                 _ => {},
             }
         }
+
+        info!("no more events (id: `{}`)", self.lichess.id);
     }
 }
 

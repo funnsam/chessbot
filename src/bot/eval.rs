@@ -1,52 +1,51 @@
-use crate::lichess::LichessGame;
 use chess::*;
 
-pub fn evaluate(game: &LichessGame) -> i32 {
+pub fn evaluate(board: &Board) -> i32 {
     let mut white_eval = 0;
     let mut black_eval = 0;
 
-    let white_end_weight = end_game_weight(game, Color::White);
-    let black_end_weight = end_game_weight(game, Color::Black);
+    let white_end_weight = end_game_weight(board, Color::White);
+    let black_end_weight = end_game_weight(board, Color::Black);
 
-    white_eval += piece_value(game, Color::White) as i32;
-    black_eval += piece_value(game, Color::Black) as i32;
+    white_eval += piece_value(board, Color::White) as i32;
+    black_eval += piece_value(board, Color::Black) as i32;
 
-    white_eval += piece_square_table(game, Color::White, black_end_weight);
-    black_eval += piece_square_table(game, Color::Black, white_end_weight);
+    white_eval += piece_square_table(board, Color::White, black_end_weight);
+    black_eval += piece_square_table(board, Color::Black, white_end_weight);
 
-    let perspective = if game.color == Color::White { 1 } else { -1 };
+    let perspective = if board.side_to_move() == Color::White { 1 } else { -1 };
 
     (white_eval - black_eval) * perspective
 }
 
-pub fn piece_value(game: &LichessGame, color: Color) -> u32 {
-    let color = game.board.color_combined(color);
-    (color & game.board.pieces(Piece::Pawn)).0.count_ones() * 100
-    + (color & game.board.pieces(Piece::Knight)).0.count_ones() * 320
-    + (color & game.board.pieces(Piece::Bishop)).0.count_ones() * 330
-    + (color & game.board.pieces(Piece::Rook)).0.count_ones() * 500
-    + (color & game.board.pieces(Piece::Queen)).0.count_ones() * 900
+pub fn piece_value(board: &Board, color: Color) -> u32 {
+    let color = board.color_combined(color);
+    (color & board.pieces(Piece::Pawn)).0.count_ones() * 100
+    + (color & board.pieces(Piece::Knight)).0.count_ones() * 320
+    + (color & board.pieces(Piece::Bishop)).0.count_ones() * 330
+    + (color & board.pieces(Piece::Rook)).0.count_ones() * 500
+    + (color & board.pieces(Piece::Queen)).0.count_ones() * 900
     // + (color & game.board.pieces(Piece::King)).0.count_ones() * 20000
 }
 
-pub fn end_game_weight(game: &LichessGame, color: Color) -> f32 {
-    let color = game.board.color_combined(color);
-    let value = (color & game.board.pieces(Piece::Knight)).0.count_ones() * 320
-    + (color & game.board.pieces(Piece::Bishop)).0.count_ones() * 330
-    + (color & game.board.pieces(Piece::Rook)).0.count_ones() * 500
-    + (color & game.board.pieces(Piece::Queen)).0.count_ones() * 900;
+pub fn end_game_weight(board: &Board, color: Color) -> f32 {
+    let color = board.color_combined(color);
+    let value = (color & board.pieces(Piece::Knight)).0.count_ones() * 320
+    + (color & board.pieces(Piece::Bishop)).0.count_ones() * 330
+    + (color & board.pieces(Piece::Rook)).0.count_ones() * 500
+    + (color & board.pieces(Piece::Queen)).0.count_ones() * 900;
 
     // value & formula from coding adventures
     1.0 - (value as f32 / 1650.0).min(1.0)
 }
 
-pub fn piece_square_table(game: &LichessGame, color: Color, end_weight: f32) -> i32 {
+pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     let mut value = 0.0;
 
-    let our_pieces = game.board.color_combined(color);
+    let our_pieces = board.color_combined(color);
 
     for mut square in our_pieces.into_iter() {
-        let typ = game.board.piece_on(square).unwrap();
+        let typ = board.piece_on(square).unwrap();
 
         if matches!(color, Color::Black) {
             square = unsafe {

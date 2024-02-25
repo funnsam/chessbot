@@ -1,6 +1,6 @@
 macro_rules! dbg {
     ($fmt: tt $($args: tt)*) => {
-        println!(concat!("\x1b[90mDebug: ", $fmt, "\x1b[0m") $($args)*);
+        eprintln!(concat!("\x1b[90mDebug: ", $fmt, "\x1b[0m") $($args)*);
     };
 }
 

@@ -1,0 +1,10 @@
+Info: starting to listen for incoming games
+Info: started a game with `Stockfish level 1` (id: `HD50dhQv`, fen: `1kr1r3/5p2/6p1/pp1p3p/1q1b4/3Kp2N/Pp1PPPP1/RNB2B1R w - - 0 42`)
+Info: game `HD50dhQv` eval -505 (w)
+Info: start search
+Info: next move: h1h2
+Info: game `HD50dhQv` eval 510  (b)
+Info: game `HD50dhQv` eval -830 (w)
+Info: start search
+Info: next move: h2h1
+  (stops getting next event)    (b)
