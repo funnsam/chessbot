@@ -47,9 +47,17 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     for mut square in our_pieces.into_iter() {
         let typ = board.piece_on(square).unwrap();
 
+        // invert square based on perspective
         if matches!(color, Color::Black) {
             square = unsafe {
-                Square::new(((7 - (square.to_int() >> 3)) << 3) | (square.to_int() & 7))
+                //   00111111
+                // - 00FFFRRR
+                // ----------
+                //   00!!!!!!
+                //     FFFRRR
+                //
+                // no carry can happen
+                Square::new(63 - square.to_int())
             };
         }
 
