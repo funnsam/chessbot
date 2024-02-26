@@ -43,7 +43,7 @@ impl LichessClient {
                 .get("https://lichess.org/api/stream/event")
                 .build().unwrap()
         ).await.unwrap().bytes_stream();
-        let mut stream = NetworkJsonIter::new(stream);
+        let mut stream = NdJsonIter::new(stream);
 
         info!("starting to listen for incoming games");
 
@@ -107,7 +107,7 @@ impl LichessClient {
                 .get(format!("https://lichess.org/api/bot/game/stream/{game_id}"))
                 .build().unwrap()
         ).await.unwrap().bytes_stream();
-        let mut stream = NetworkJsonIter::new(stream);
+        let mut stream = NdJsonIter::new(stream);
 
         while let Some(event) = stream.next_json().await {
             match event["type"].as_str() {
@@ -224,6 +224,7 @@ impl GamesManager {
                     lichess: game,
                     incoming_events: event_r,
                     outgoing_moves: moves_t,
+                    trans_table: crate::bot::trans_table::TransTable::new(),
                 }.run();
             });
 
@@ -236,29 +237,56 @@ impl GamesManager {
     }
 }
 
-struct NetworkJsonIter<S: futures::stream::Stream<Item = Result<bytes::Bytes>>> {
+struct NdJsonIter<S: futures::stream::Stream<Item = Result<bytes::Bytes>>> {
     stream: S,
+    buffer: Vec<u8>,
+    leftover: Vec<u8>,
 }
 
-impl<S: futures::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpin> NetworkJsonIter<S> {
+impl<S: futures::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpin> NdJsonIter<S> {
     fn new(stream: S) -> Self {
-        Self { stream }
+        Self {
+            stream,
+            buffer: Vec::new(),
+            leftover: Vec::new(),
+        }
     }
 
     async fn next_json(&mut self) -> Option<json::JsonValue> {
-        let mut buf = Vec::new();
+        self.buffer.clear();
 
-        use futures::stream::StreamExt;
-        'a: while let Some(Ok(i)) = self.stream.next().await {
-            for b in i {
-                if b != b'\n' {
-                    buf.push(b);
-                } else if !buf.is_empty() {
-                    break 'a;
-                }
+        let mut used = 0;
+        let mut done = false;
+        dbg!("{:?} {}",self.leftover,self.leftover.len());
+        for b in self.leftover.iter() {
+            used += 1;
+            if *b != b'\n' {
+                self.buffer.push(*b);
+            } else if !self.buffer.is_empty() {
+                done = true;
+                break;
             }
         }
 
-        json::parse(&String::from_utf8(buf).ok()?).ok()
+        self.leftover = self.leftover[used..].to_vec();
+
+        if done {
+            return json::parse(std::str::from_utf8(&self.buffer).ok()?).ok();
+        }
+
+        use futures::stream::StreamExt;
+        'a: while let Some(Ok(i)) = self.stream.next().await {
+            dbg!("{:?} {}",i,i.len());
+            for (j, b) in i.iter().enumerate() {
+                if *b != b'\n' {
+                    self.buffer.push(*b);
+                } else if !self.buffer.is_empty() {
+                    self.leftover.extend(&i[j..]);
+                    break 'a;
+                }
+            }
+
+        }
+        json::parse(std::str::from_utf8(&self.buffer).ok()?).ok()
     }
 }

@@ -1,5 +1,6 @@
 mod eval;
 mod search;
+pub mod trans_table;
 
 use std::sync::mpsc::*;
 use crate::lichess::LichessGame;
@@ -9,6 +10,8 @@ pub struct Game {
     pub lichess: LichessGame,
     pub incoming_events: Receiver<GameEvent>,
     pub outgoing_moves: Sender<ChessMove>,
+
+    pub trans_table: trans_table::TransTable,
 }
 
 #[derive(Debug)]
@@ -37,33 +40,28 @@ pub struct TimeControl {
 }
 
 impl Game {
+    pub fn play(&mut self) {
+        let eval = eval::evaluate(&self.lichess.board);
+        info!("game `{}` eval {}", &self.lichess.id, eval);
+
+        if self.lichess.board.side_to_move() == self.lichess.color {
+            info!("start search");
+            let next = self.search();
+            info!("next move: {}", next);
+            info!("tt usage: {:.01}%", self.trans_table.usage() * 100.0);
+            self.outgoing_moves.send(next).unwrap();
+        }
+    }
+
     pub fn run(mut self) {
         while let Ok(event) = self.incoming_events.recv() {
             match event {
-                GameEvent::FullGameState { moves, wtime, btime, status } => {
-                    let eval = eval::evaluate(&self.lichess.board);
-                    info!("game `{}` eval {}", &self.lichess.id, eval);
-
-                    if self.lichess.board.side_to_move() == self.lichess.color {
-                        info!("start search");
-                        let next = search::search(&self.lichess);
-                        info!("next move: {}", next);
-                        self.outgoing_moves.send(next).unwrap();
-                    }
-                },
+                GameEvent::FullGameState { moves, wtime, btime, status } => self.play(),
                 GameEvent::NextGameState { moves, wtime, btime, status } => {
                     let m = move_from_uci(moves.split_whitespace().last().unwrap());
                     self.lichess.board = self.lichess.board.make_move_new(m);
 
-                    let eval = eval::evaluate(&self.lichess.board);
-                    info!("game `{}` eval {}", &self.lichess.id, eval);
-
-                    if self.lichess.board.side_to_move() == self.lichess.color {
-                        info!("start search");
-                        let next = search::search(&self.lichess);
-                        info!("next move: {}", next);
-                        self.outgoing_moves.send(next).unwrap();
-                    }
+                    self.play();
                 },
                 _ => {},
             }
