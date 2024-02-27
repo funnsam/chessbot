@@ -1,6 +1,3 @@
-// use tokio_util::io::StreamReader;
-// use tokio::io::AsyncBufReadExt;
-// use futures::stream::TryStreamExt;
 use reqwest::*;
 use std::sync::{mpsc::*, Arc};
 use std::str::FromStr;
@@ -27,7 +24,6 @@ impl LichessClient {
         );
         let client = Client::builder()
             .default_headers(headers)
-            .pool_idle_timeout(None)
             .build().unwrap();
 
         (Self {
@@ -237,13 +233,13 @@ impl GamesManager {
     }
 }
 
-struct NdJsonIter<S: futures::stream::Stream<Item = Result<bytes::Bytes>>> {
+struct NdJsonIter<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>>> {
     stream: S,
     buffer: Vec<u8>,
     leftover: Vec<u8>,
 }
 
-impl<S: futures::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpin> NdJsonIter<S> {
+impl<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpin> NdJsonIter<S> {
     fn new(stream: S) -> Self {
         Self {
             stream,
@@ -274,7 +270,7 @@ impl<S: futures::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpi
             return json::parse(std::str::from_utf8(&self.buffer).ok()?).ok();
         }
 
-        use futures::stream::StreamExt;
+        use futures_util::stream::StreamExt;
         'a: while let Some(Ok(i)) = self.stream.next().await {
             dbg!("{:?} {}",i,i.len());
             for (j, b) in i.iter().enumerate() {
