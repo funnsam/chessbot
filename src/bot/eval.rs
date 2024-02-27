@@ -1,21 +1,24 @@
 use chess::*;
 
 pub fn evaluate(board: &Board) -> i32 {
-    let mut white_eval = 0;
-    let mut black_eval = 0;
+    let white_eval = eval_single(board, Color::White);
+    let black_eval = eval_single(board, Color::Black);
 
-    let white_end_weight = end_game_weight(board, Color::White);
-    let black_end_weight = end_game_weight(board, Color::Black);
-
-    white_eval += piece_value(board, Color::White) as i32;
-    black_eval += piece_value(board, Color::Black) as i32;
-
-    white_eval += piece_square_table(board, Color::White, black_end_weight);
-    black_eval += piece_square_table(board, Color::Black, white_end_weight);
-
-    let perspective = if board.side_to_move() == Color::White { 1 } else { -1 };
+    let perspective = if matches!(board.side_to_move(), Color::White) { 1 } else { -1 };
 
     (white_eval - black_eval) * perspective
+}
+
+#[inline(always)]
+fn eval_single(board: &Board, color: Color) -> i32 {
+    let mut eval = 0;
+
+    let oppo_end_weight = end_game_weight(board, unsafe { core::mem::transmute(1 - color as u8) });
+
+    eval += piece_value(board, color) as i32;
+    eval += piece_square_table(board, color, oppo_end_weight);
+
+    eval
 }
 
 pub fn piece_value(board: &Board, color: Color) -> u32 {
@@ -25,7 +28,6 @@ pub fn piece_value(board: &Board, color: Color) -> u32 {
     + (color & board.pieces(Piece::Bishop)).0.count_ones() * 330
     + (color & board.pieces(Piece::Rook)).0.count_ones() * 500
     + (color & board.pieces(Piece::Queen)).0.count_ones() * 900
-    // + (color & game.board.pieces(Piece::King)).0.count_ones() * 20000
 }
 
 pub fn end_game_weight(board: &Board, color: Color) -> f32 {
@@ -71,10 +73,12 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     value as i32
 }
 
-// a1 ----> a8
+// a1 ----> h1
 // |
 // v
-// h1
+// a8
+//
+// value from https://www.chessprogramming.org/Simplified_Evaluation_Function
 const PIECE_SQUARE_TABLE_MID: &[i32] = &[
     // Pawn
       0,   0,   0,   0,   0,   0,   0,   0,
