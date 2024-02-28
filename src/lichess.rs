@@ -5,15 +5,11 @@ use crate::bot::*;
 
 pub struct LichessClient {
     client: Client,
-    // api_token: String,
-    games: Sender<LichessGame>,
 }
 
 impl LichessClient {
-    pub fn new() -> (Self, Receiver<LichessGame>) {
+    pub fn new() -> Self {
         let api_token = std::fs::read_to_string(".token").unwrap().trim().to_string();
-
-        let (games, games_r) = channel();
 
         let mut headers = header::HeaderMap::new();
         headers.insert(
@@ -24,13 +20,10 @@ impl LichessClient {
         );
         let client = Client::builder()
             .default_headers(headers)
+            .connection_verbose(true)
             .build().unwrap();
 
-        (Self {
-            client,
-            // api_token,
-            games,
-        }, games_r)
+        Self { client }
     }
 
     pub async fn listen(self: Arc<Self>) {
@@ -83,7 +76,31 @@ impl LichessClient {
                     info!("started a game with `{}` (id: `{}`, fen: `{}`)", user, id, fen);
 
                     let game = LichessGame { id, color, board };
-                    self.games.send(game).unwrap();
+
+                    let (event_t, event_r) = channel();
+
+                    {
+                        let id = game.id.clone();
+                        let arc = Arc::clone(&self);
+                        tokio::spawn(async move { arc.listen_game(id, event_t).await });
+                    }
+
+                    let (moves_t, moves_r) = channel();
+
+                    {
+                        let id = game.id.clone();
+                        let arc = Arc::clone(&self);
+                        tokio::spawn(async move { arc.send_game(id, moves_r).await });
+                    }
+
+                    tokio::spawn(async move {
+                        Game {
+                            lichess: game,
+                            incoming_events: event_r,
+                            outgoing_moves: moves_t,
+                            trans_table: crate::bot::trans_table::TransTable::new(),
+                        }.run();
+                    });
                 },
                 Some(typ) => {
                     warn!("got unknown type of event `{}`", typ);
@@ -182,55 +199,6 @@ pub struct LichessGame {
     pub id: String,
     pub color: chess::Color,
     pub board: chess::Board,
-}
-
-pub struct GamesManager {
-    incoming_games: Receiver<LichessGame>,
-
-    // games: Vec<Game>,
-}
-
-impl GamesManager {
-    pub fn new(incoming_games: Receiver<LichessGame>) -> Self {
-        Self { incoming_games }
-    }
-
-    pub fn start(&mut self, client: Arc<LichessClient>) {
-        loop {
-            let game = self.incoming_games.recv().unwrap();
-
-            let (event_t, event_r) = channel();
-
-            {
-                let id = game.id.clone();
-                let client = Arc::clone(&client);
-                tokio::spawn(async move { client.listen_game(id, event_t).await });
-            }
-
-            let (moves_t, moves_r) = channel();
-
-            {
-                let id = game.id.clone();
-                let client = Arc::clone(&client);
-                tokio::spawn(async move { client.send_game(id, moves_r).await });
-            }
-
-            tokio::spawn(async move {
-                Game {
-                    lichess: game,
-                    incoming_events: event_r,
-                    outgoing_moves: moves_t,
-                    trans_table: crate::bot::trans_table::TransTable::new(),
-                }.run();
-            });
-
-            /* self.games.push(Game {
-                lichess: game,
-                incoming_events: event_r,
-                outgoing_moves: moves_t,
-            }); */
-        }
-    }
 }
 
 struct NdJsonIter<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>>> {

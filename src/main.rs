@@ -7,13 +7,7 @@ mod lichess;
 
 #[tokio::main]
 async fn main() {
-    let (lichess, games) = lichess::LichessClient::new();
-    let lichess = Arc::new(lichess);
-    {
-        let lichess = Arc::clone(&lichess);
-        tokio::spawn(async { lichess.listen().await });
-    }
-
-    let mut gm = lichess::GamesManager::new(games);
-    gm.start(lichess);
+    stderrlog::new().verbosity(4).init().unwrap();
+    let lichess = Arc::new(lichess::LichessClient::new());
+    lichess.listen().await;
 }
