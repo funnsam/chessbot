@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-const T_TABLE_SIZE: usize = 16 * 1024 * 1024;
+const T_TABLE_SIZE: usize = 64 * 1024 * 1024;
 const T_TABLE_ELMS: usize = T_TABLE_SIZE / core::mem::size_of::<TransTableEntry>();
 
 pub struct TransTableEntry {

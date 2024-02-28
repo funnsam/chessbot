@@ -5,6 +5,9 @@ use crate::bot::*;
 
 pub struct LichessClient {
     client: Client,
+
+    // FIX: see somewhere in LichessClient::send_game()
+    api_token: String,
 }
 
 impl LichessClient {
@@ -23,7 +26,7 @@ impl LichessClient {
             .connection_verbose(true)
             .build().unwrap();
 
-        Self { client }
+        Self { client, api_token }
     }
 
     pub async fn listen(self: Arc<Self>) {
@@ -180,17 +183,27 @@ impl LichessClient {
             };
 
             // FIX: this fucking post request is hanging the streams
-            let resp = self.client.execute(
-                self.client
+            // https://github.com/seanmonstar/reqwest/issues/2133
+            //
+            // let resp = self.client.execute(
+            //     self.client
+            //         .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
+            //         .build().unwrap()
+            // ).await.unwrap();
+
+            let client = Client::new();
+            let resp = client.execute(
+                client
                     .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
+                    .header("Authorization", format!("Bearer {}", self.api_token))
                     .build().unwrap()
             ).await.unwrap();
 
-            // if !resp.status().is_success() {
-            //     let reason = json::parse(&resp.text().await.unwrap()).unwrap();
-            //     let reason = reason["error"].as_str().unwrap();
-            //     warn!("move {} invalid ({})", m_uci, reason);
-            // }
+            if !resp.status().is_success() {
+                let reason = json::parse(&resp.text().await.unwrap()).unwrap();
+                let reason = reason["error"].as_str().unwrap();
+                warn!("move {} invalid ({})", m_uci, reason);
+            }
         }
     }
 }
@@ -222,7 +235,6 @@ impl<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker:
 
         let mut used = 0;
         let mut done = false;
-        dbg!("{:?} {}",self.leftover,self.leftover.len());
         for b in self.leftover.iter() {
             used += 1;
             if *b != b'\n' {
@@ -241,7 +253,6 @@ impl<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker:
 
         use futures_util::stream::StreamExt;
         'a: while let Some(Ok(i)) = self.stream.next().await {
-            dbg!("{:?} {}",i,i.len());
             for (j, b) in i.iter().enumerate() {
                 if *b != b'\n' {
                     self.buffer.push(*b);
