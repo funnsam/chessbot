@@ -1,6 +1,7 @@
 mod eval;
 mod search;
 pub mod trans_table;
+pub mod config;
 
 use std::sync::mpsc::*;
 use crate::lichess::LichessGame;
@@ -12,6 +13,7 @@ pub struct Game {
     pub outgoing_moves: Sender<ChessMove>,
 
     pub trans_table: trans_table::TransTable,
+    pub age: usize,
 }
 
 #[derive(Debug)]
@@ -41,10 +43,19 @@ pub struct TimeControl {
 
 impl Game {
     pub fn play(&mut self) {
-        let eval = eval::evaluate(&self.lichess.board);
-        info!("game `{}` eval {}", &self.lichess.id, eval);
+        let eval = self.quiescene_search(self.lichess.board.clone(), i32::MIN + 1, i32::MAX);
+        info!(
+            "game `{}` eval {} (for {})",
+            &self.lichess.id,
+            eval,
+            match self.lichess.board.side_to_move() {
+                Color::White => "white",
+                Color::Black => "black",
+            }
+        );
 
         if self.lichess.board.side_to_move() == self.lichess.color {
+            self.age += 1;
             info!("start search");
             let next = self.search();
             info!("next move: {}", next);

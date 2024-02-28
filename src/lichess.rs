@@ -102,6 +102,7 @@ impl LichessClient {
                             incoming_events: event_r,
                             outgoing_moves: moves_t,
                             trans_table: crate::bot::trans_table::TransTable::new(),
+                            age: 1,
                         }.run();
                     });
                 },

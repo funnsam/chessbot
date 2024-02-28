@@ -13,7 +13,7 @@ pub fn evaluate(board: &Board) -> i32 {
 fn eval_single(board: &Board, color: Color) -> i32 {
     let mut eval = 0;
 
-    let oppo_end_weight = end_game_weight(board, unsafe { core::mem::transmute(1 - color as u8) });
+    let oppo_end_weight = end_game_weight(board, !color);
 
     eval += piece_value(board, color) as i32;
     eval += piece_square_table(board, color, oppo_end_weight);
