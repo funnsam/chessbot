@@ -179,17 +179,18 @@ impl LichessClient {
                 _ => "",
             };
 
+            // FIX: this fucking post request is hanging the streams
             let resp = self.client.execute(
-                self.client.post(
-                    format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}")
-                ).build().unwrap()
+                self.client
+                    .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
+                    .build().unwrap()
             ).await.unwrap();
 
-            if !resp.status().is_success() {
-                let reason = json::parse(&resp.text().await.unwrap()).unwrap();
-                let reason = reason["error"].as_str().unwrap();
-                warn!("move {} invalid ({})", m_uci, reason);
-            }
+            // if !resp.status().is_success() {
+            //     let reason = json::parse(&resp.text().await.unwrap()).unwrap();
+            //     let reason = reason["error"].as_str().unwrap();
+            //     warn!("move {} invalid ({})", m_uci, reason);
+            // }
         }
     }
 }
@@ -247,7 +248,7 @@ impl<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker:
                 } else if !self.buffer.is_empty() {
                     self.leftover.extend(&i[j..]);
                     break 'a;
-                }
+                } else { std::hint::black_box(()); }
             }
 
         }

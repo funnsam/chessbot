@@ -7,7 +7,6 @@ mod lichess;
 
 #[tokio::main]
 async fn main() {
-    stderrlog::new().verbosity(4).init().unwrap();
     let lichess = Arc::new(lichess::LichessClient::new());
     lichess.listen().await;
 }
