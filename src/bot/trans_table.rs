@@ -22,7 +22,7 @@ impl TransTable {
         }
 
         if self.0.len() == T_TABLE_ELMS {
-            let mut min_score = 0;
+            let mut min_score = usize::MAX;
             let mut rm_k = 0;
 
             for (k, v) in self.0.iter() {

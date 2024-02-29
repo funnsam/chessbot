@@ -1,5 +1,5 @@
 use reqwest::*;
-use std::sync::{mpsc::*, Arc};
+use std::sync::{atomic::*, mpsc::*, Arc};
 use std::str::FromStr;
 use crate::bot::*;
 
@@ -8,6 +8,9 @@ pub struct LichessClient {
 
     // FIX: see somewhere in LichessClient::send_game()
     api_token: String,
+
+    pub enable_pair: AtomicBool,
+    pub active_games: AtomicUsize,
 }
 
 impl LichessClient {
@@ -26,7 +29,24 @@ impl LichessClient {
             .connection_verbose(true)
             .build().unwrap();
 
-        Self { client, api_token }
+        Self {
+            client,
+            api_token,
+
+            enable_pair: AtomicBool::new(false),
+            active_games: AtomicUsize::new(0),
+        }
+    }
+
+    pub async fn start(self) {
+        let li = Arc::new(self);
+
+        {
+            let li = Arc::clone(&li);
+            tokio::spawn(async { li.auto_challenge().await });
+        }
+
+        li.listen().await;
     }
 
     pub async fn listen(self: Arc<Self>) {
@@ -45,18 +65,23 @@ impl LichessClient {
                     let challenge = &event["challenge"];
                     let id = challenge["id"].as_str().unwrap();
                     let user = challenge["challenger"]["name"].as_str().unwrap();
+
+                    let client = Client::new();
                     if challenge["variant"]["key"] == "standard" {
                         info!("`{}` challenged bot (id: `{}`)", user, id);
 
-                        if !self.client.execute(self.client
+                        // FIX: post req
+                        if !client.execute(self.client
                             .post(format!("https://lichess.org/api/challenge/{id}/accept"))
+                            .header("Authorization", format!("Bearer {}", self.api_token))
                             .build().unwrap()
                         ).await.unwrap().status().is_success() {
                             warn!("failed to accept challenge id {}", id);
                         }
                     } else {
-                        self.client.execute(self.client
+                        client.execute(client
                             .post(format!("https://lichess.org/api/challenge/{id}/decline"))
+                            .header("Authorization", format!("Bearer {}", self.api_token))
                             .build().unwrap()
                         ).await.unwrap();
                     }
@@ -105,6 +130,8 @@ impl LichessClient {
                             age: 1,
                         }.run();
                     });
+
+                    self.active_games.fetch_add(1, Ordering::Relaxed);
                 },
                 Some(typ) => {
                     warn!("got unknown type of event `{}`", typ);
@@ -207,6 +234,22 @@ impl LichessClient {
             }
         }
     }
+
+    pub async fn auto_challenge(self: Arc<Self>) {
+        // let client = Client::new();
+        // loop {
+        //     tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+
+        //     if self.active_games.load(Ordering::Relaxed) < super::config::NUM_ACTIVE_GAMES {
+        //         let resp = client.execute(
+        //             client
+        //                 .post(format!("https://lichess.org/api/challenge/{target}"))
+        //                 .header("Authorization", format!("Bearer {}", self.api_token))
+        //                 .build().unwrap()
+        //         ).await.unwrap();
+        //     }
+        // }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -266,4 +309,10 @@ impl<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker:
         }
         json::parse(std::str::from_utf8(&self.buffer).ok()?).ok()
     }
+}
+
+pub enum ServerCommand {
+    AutoChallenge {
+        enable: bool,
+    },
 }

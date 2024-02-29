@@ -5,9 +5,19 @@ impl super::Game {
         let mut max_eval = i32::MIN;
         let mut max_move = None;
 
-        for m in MoveGen::new_legal(&self.lichess.board) {
+        for (i, m) in move_in_order(&self.lichess.board).into_iter().enumerate() {
             let board = self.lichess.board.make_move_new(m);
-            let eval = -self.search_alpha_beta(board, super::config::MAX_SEARCH_DEPTH, i32::MIN + 1, i32::MAX);
+
+            let mut depth = super::config::MAX_SEARCH_DEPTH;
+
+            let reduced = i >= super::config::REDUCED_DEPTH_THRESHOLD;
+            depth -= reduced as usize;
+
+            let mut eval = -self.search_alpha_beta(board, depth, i32::MIN + 1, i32::MAX);
+
+            if eval >= max_eval && reduced {
+                eval = -self.search_alpha_beta(board, depth + 1, i32::MIN + 1, i32::MAX);
+            }
 
             if eval >= max_eval {
                 max_eval = eval;
@@ -37,9 +47,7 @@ impl super::Game {
             return eval;
         }
 
-        let movegen = MoveGen::new_legal(&current);
-
-        for m in movegen {
+        for m in move_in_order(&current).into_iter() {
             let after = current.make_move_new(m);
             let eval = -self.search_alpha_beta(after, depth - 1, -beta, -alpha);
 
@@ -90,4 +98,18 @@ impl super::Game {
 
         alpha
     }
+}
+
+fn move_in_order(board: &Board) -> Vec<ChessMove> {
+    let gen = MoveGen::new_legal(&board);
+    let mut buf = Vec::with_capacity(gen.len());
+
+    buf.extend(gen);
+
+    buf.sort_by_key(|m| {
+        let board = board.make_move_new(*m);
+        super::eval::evaluate(&board)
+    });
+
+    buf
 }
