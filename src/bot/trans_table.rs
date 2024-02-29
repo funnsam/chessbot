@@ -33,7 +33,7 @@ impl TransTable {
                 }
             }
 
-            self.0.remove(&k);
+            self.0.remove(&rm_k);
         }
 
         self.0.insert(k, v);

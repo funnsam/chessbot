@@ -67,7 +67,8 @@ impl LichessClient {
                     let user = challenge["challenger"]["name"].as_str().unwrap();
 
                     let client = Client::new();
-                    if challenge["variant"]["key"] == "standard" {
+                    if challenge["variant"]["key"] == "standard"
+                        && challenge["speed"] == "correspondence" {
                         info!("`{}` challenged bot (id: `{}`)", user, id);
 
                         // FIX: post req
@@ -128,6 +129,9 @@ impl LichessClient {
                             outgoing_moves: moves_t,
                             trans_table: crate::bot::trans_table::TransTable::new(),
                             age: 1,
+
+                            time_ctrl: TimeControl::default(),
+                            time_ref: std::time::Instant::now(),
                         }.run();
                     });
 
