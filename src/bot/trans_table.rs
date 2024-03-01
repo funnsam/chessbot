@@ -4,7 +4,7 @@ const T_TABLE_ELMS: usize = super::config::T_TABLE_SIZE / core::mem::size_of::<T
 
 pub struct TransTableEntry {
     pub depth: usize,
-    pub eval: i32,
+    pub eval: f32,
     pub age: usize,
 }
 

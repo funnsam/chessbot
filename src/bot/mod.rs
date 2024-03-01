@@ -17,7 +17,8 @@ pub struct Game {
     pub age: usize,
 
     pub time_ctrl: TimeControl,
-    pub time_ref: Instant
+    pub time_ref: Instant,
+    pub time_usable: Duration,
 }
 
 #[derive(Debug)]
@@ -47,9 +48,14 @@ pub struct TimeControl {
 
 impl Game {
     pub fn play(&mut self) {
-        let eval = self.quiescene_search(self.lichess.board.clone(), i32::MIN + 1, i32::MAX);
+        let eval = self.quiescene_search(
+            self.lichess.board.clone(),
+            f32::NEG_INFINITY,
+            f32::INFINITY
+        );
+
         info!(
-            "game `{}` eval {} (for {})",
+            "game `{}` eval {:.1} (for {})",
             &self.lichess.id,
             eval,
             match self.lichess.board.side_to_move() {
@@ -61,8 +67,9 @@ impl Game {
         if self.lichess.board.side_to_move() == self.lichess.color {
             self.age += 1;
             info!("start search");
-            let next = self.search();
-            info!("next move: {}", next);
+            self.reserve_time();
+            let (next, eval) = self.search();
+            info!("next move: {} (eval: {:.1})", next, eval);
             info!("tt usage: {:.01}%", self.trans_table.usage() * 100.0);
             self.outgoing_moves.send(next).unwrap();
         }
@@ -101,13 +108,11 @@ impl Game {
         info!("no more events (id: `{}`)", self.lichess.id);
     }
 
-    pub fn times_up(&self) -> bool {
+    pub fn reserve_time(&mut self) {
         // https://github.com/SebLague/Chess-Coding-Adventure/blob/Chess-V2-UCI/Chess-Coding-Adventure/src/Bot.cs#L64
 
-        // +100 to est time needed for searching with more depth
-        let since_start = self.time_ref.elapsed().as_millis() as isize + 100;
-        let left = self.time_ctrl.time_left as isize;
-        let incr = self.time_ctrl.time_incr as isize;
+        let left = self.time_ctrl.time_left as u64;
+        let incr = self.time_ctrl.time_incr as u64;
 
         let mut think_time = left / 40;
 
@@ -116,7 +121,11 @@ impl Game {
         }
 
         let min_think = (left / 4).min(50);
-        since_start > min_think.max(think_time)
+        self.time_usable = Duration::from_millis(min_think.max(think_time));
+    }
+
+    pub fn times_up(&self) -> bool {
+        self.time_ref.elapsed() > self.time_usable
     }
 }
 

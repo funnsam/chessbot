@@ -132,6 +132,7 @@ impl LichessClient {
 
                             time_ctrl: TimeControl::default(),
                             time_ref: std::time::Instant::now(),
+                            time_usable: std::time::Duration::from_secs(0),
                         }.run();
                     });
 

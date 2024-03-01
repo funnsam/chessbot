@@ -1,47 +1,47 @@
 use chess::*;
 
-pub fn evaluate(board: &Board) -> i32 {
+pub fn evaluate(board: &Board) -> f32 {
     let white_eval = eval_single(board, Color::White);
     let black_eval = eval_single(board, Color::Black);
 
-    let perspective = if matches!(board.side_to_move(), Color::White) { 1 } else { -1 };
+    let perspective = if matches!(board.side_to_move(), Color::White) { 1.0 } else { -1.0 };
 
     (white_eval - black_eval) * perspective
 }
 
 #[inline(always)]
-fn eval_single(board: &Board, color: Color) -> i32 {
-    let mut eval = 0;
+fn eval_single(board: &Board, color: Color) -> f32 {
+    let mut eval = 0.0;
 
     let oppo_end_weight = end_game_weight(board, !color);
 
-    eval += piece_value(board, color) as i32;
-    eval += piece_square_table(board, color, oppo_end_weight);
+    eval += piece_value(board, color);
+    eval += piece_square_table(board, color, oppo_end_weight) as f32;
 
     eval
 }
 
-pub fn piece_value(board: &Board, color: Color) -> u32 {
+pub fn piece_value(board: &Board, color: Color) -> f32 {
     let color = board.color_combined(color);
-    (color & board.pieces(Piece::Pawn)).0.count_ones() * 100
-    + (color & board.pieces(Piece::Knight)).0.count_ones() * 320
-    + (color & board.pieces(Piece::Bishop)).0.count_ones() * 330
-    + (color & board.pieces(Piece::Rook)).0.count_ones() * 500
-    + (color & board.pieces(Piece::Queen)).0.count_ones() * 900
+    (color & board.pieces(Piece::Pawn)).0.count_ones() as f32 * PIECE_VALUE[0]
+        + (color & board.pieces(Piece::Knight)).0.count_ones() as f32 * PIECE_VALUE[1]
+        + (color & board.pieces(Piece::Bishop)).0.count_ones() as f32 * PIECE_VALUE[2]
+        + (color & board.pieces(Piece::Rook)).0.count_ones() as f32 * PIECE_VALUE[3]
+        + (color & board.pieces(Piece::Queen)).0.count_ones() as f32 * PIECE_VALUE[4]
 }
 
 pub fn end_game_weight(board: &Board, color: Color) -> f32 {
     let color = board.color_combined(color);
-    let value = (color & board.pieces(Piece::Knight)).0.count_ones() * 320
-    + (color & board.pieces(Piece::Bishop)).0.count_ones() * 330
-    + (color & board.pieces(Piece::Rook)).0.count_ones() * 500
-    + (color & board.pieces(Piece::Queen)).0.count_ones() * 900;
+    let value = (color & board.pieces(Piece::Knight)).0.count_ones() as f32* PIECE_VALUE[1]
+        + (color & board.pieces(Piece::Bishop)).0.count_ones() as f32 * PIECE_VALUE[2]
+        + (color & board.pieces(Piece::Rook)).0.count_ones() as f32 * PIECE_VALUE[3]
+        + (color & board.pieces(Piece::Queen)).0.count_ones() as f32* PIECE_VALUE[4];
 
     // value & formula from coding adventures
     1.0 - (value as f32 / 1650.0).min(1.0)
 }
 
-pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
+pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> f32 {
     let mut value = 0.0;
 
     let our_pieces = board.color_combined(color);
@@ -70,15 +70,18 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
             + PIECE_SQUARE_TABLE_END[idx] as f32 * end_weight;
     }
 
-    value as i32
+    value as f32
 }
+
+pub const PIECE_VALUE: [f32; 6] = [100.0, 320.0, 330.0, 500.0, 900.0, 20000.0];
 
 // a1 ----> h1
 // |
 // v
 // a8
 //
-// value from https://www.chessprogramming.org/Simplified_Evaluation_Function
+// value mostly from https://www.chessprogramming.org/Simplified_Evaluation_Function
+// pawn endgame was added by me
 const PIECE_SQUARE_TABLE_MID: &[i32] = &[
     // Pawn
       0,   0,   0,   0,   0,   0,   0,   0,
@@ -139,11 +142,11 @@ const PIECE_SQUARE_TABLE_MID: &[i32] = &[
 const PIECE_SQUARE_TABLE_END: &[i32] = &[
     // Pawn
       0,   0,   0,   0,   0,   0,   0,   0,
-      5,  10,  10, -20, -20,  10,  10,   5,
-      5,  -5, -10,   0,   0, -10,  -5,   5,
-      0,   0,   0,  20,  20,   0,   0,   0,
-      5,   5,  10,  25,  25,  10,   5,   5,
-     10,  10,  20,  30,  30,  20,  10,  10,
+    -20, -20, -20, -20, -20, -20, -20, -20,
+    -10, -10, -10, -10, -10, -10, -10, -10,
+     20,  20,  20,  20,  20,  20,  20,  20,
+     30,  30,  30,  30,  30,  30,  30,  30,
+     40,  40,  40,  40,  40,  40,  40,  40,
      50,  50,  50,  50,  50,  50,  50,  50,
       0,   0,   0,   0,   0,   0,   0,   0,
     // Knight
