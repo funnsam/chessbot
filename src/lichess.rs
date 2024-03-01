@@ -127,7 +127,7 @@ impl LichessClient {
                             lichess: game,
                             incoming_events: event_r,
                             outgoing_moves: moves_t,
-                            trans_table: crate::bot::trans_table::TransTable::new(),
+                            trans_table: crate::bot::trans_table::TransTable::new().into(),
                             age: 1,
 
                             time_ctrl: TimeControl::default(),

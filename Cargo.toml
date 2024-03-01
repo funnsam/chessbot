@@ -12,8 +12,9 @@ futures-util = "0.3.30"
 bytes = "1.0"
 chess = "3.2.0"
 json = "0.12.4"
+rayon = "1.9.0"
 
 [profile.release]
-# codegen-units = 1
-# lto = "fat"
+codegen-units = 1
+lto = "fat"
 strip = "symbols"

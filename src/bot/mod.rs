@@ -3,7 +3,7 @@ mod search;
 pub mod trans_table;
 pub mod config;
 
-use std::sync::mpsc::*;
+use std::sync::{*, mpsc::*};
 use crate::lichess::LichessGame;
 use chess::*;
 use std::time::*;
@@ -13,7 +13,7 @@ pub struct Game {
     pub incoming_events: Receiver<GameEvent>,
     pub outgoing_moves: Sender<ChessMove>,
 
-    pub trans_table: trans_table::TransTable,
+    pub trans_table: Mutex<trans_table::TransTable>,
     pub age: usize,
 
     pub time_ctrl: TimeControl,
@@ -46,6 +46,8 @@ pub struct TimeControl {
     pub time_incr: usize,
 }
 
+unsafe impl Sync for Game {}
+
 impl Game {
     pub fn play(&mut self) {
         let eval = self.quiescene_search(
@@ -70,7 +72,7 @@ impl Game {
             self.reserve_time();
             let (next, eval) = self.search();
             info!("next move: {} (eval: {:.1})", next, eval);
-            info!("tt usage: {:.01}%", self.trans_table.usage() * 100.0);
+            info!("tt usage: {:.01}%", self.trans_table.lock().unwrap().usage() * 100.0);
             self.outgoing_moves.send(next).unwrap();
         }
     }
