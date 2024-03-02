@@ -14,7 +14,7 @@ impl super::Game {
         for m in gen {
             let board = self.lichess.board.make_move_new(m);
             let eval = super::eval::evaluate(&board);
-            moves.push((m, eval));
+            moves.push((m, eval, vec![]));
         }
 
         moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -22,37 +22,38 @@ impl super::Game {
         for i in 1..=MAX_SEARCH_DEPTH {
             let start = std::time::Instant::now();
 
-            moves.par_iter_mut().enumerate().for_each(|(j, (m, e))| {
+            moves.par_iter_mut().enumerate().for_each(|(j, (m, e, best_moves))| {
                 let board = self.lichess.board.make_move_new(*m);
 
                 let mut depth = i;
                 depth -= (j >= REDUCED_SEARCH_DEPTH) as usize;
 
-                let mut eval = -self.search_alpha_beta(
+                let (mut eval, mut moves) = self.search_alpha_beta(
                     board,
                     depth,
                     EXTEND_SEARCH_LIMIT,
-                    f32::NEG_INFINITY, // beta is initially -inf
-                    -*max_eval.lock().unwrap(), // doing what -alpha does
+                    f32::NEG_INFINITY,
+                    -*max_eval.lock().unwrap(),
                 );
+
+                eval = -eval;
 
                 if self.times_up() {
                     return;
                 }
 
                 if eval > *max_eval.lock().unwrap() && j >= REDUCED_SEARCH_DEPTH {
-                    let new_eval = -self.search_alpha_beta(
+                    let (new_eval, new_moves) = self.search_alpha_beta(
                         board,
                         depth + 1,
                         EXTEND_SEARCH_LIMIT,
                         f32::NEG_INFINITY,
-                        -eval, // best is now eval
+                        -eval,
                     );
 
                     if !self.times_up() {
-                        dbg!("{} ({}th move) better than predicted (old: {}, new: {})", m, j, eval, new_eval);
-
-                        eval = new_eval;
+                        eval = -new_eval;
+                        moves = new_moves;
                     }
                 }
 
@@ -61,6 +62,8 @@ impl super::Game {
                 }
 
                 *e = eval;
+                moves.push(*m);
+                *best_moves = moves;
             });
 
             moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -74,11 +77,21 @@ impl super::Game {
 
         moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        for m in moves.iter(){
-            dbg!("{} {}", m.0, m.1);
+        for m in moves.iter() {
+            dbg!(
+                "{} {} ({} ...)",
+                m.0,
+                m.1,
+                m.2.iter()
+                    .rev()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
         }
 
-        moves.first().unwrap().clone()
+        let m = moves.first().unwrap().clone();
+        (m.0, m.1)
     }
 
     fn search_alpha_beta(
@@ -88,68 +101,97 @@ impl super::Game {
         ext_depth: usize,
         mut alpha: f32,
         beta: f32,
-    ) -> f32 {
-        if self.times_up() {
-            return 0.0;
-        }
-
+    ) -> (f32, Vec<ChessMove>) {
         if matches!(current.status(), BoardStatus::Checkmate) {
-            return f32::NEG_INFINITY;
+            return (f32::NEG_INFINITY, vec![]);
         } else if matches!(current.status(), BoardStatus::Stalemate) {
-            return 0.0;
+            return (0.0, vec![]);
         }
 
         if let Some(t_e) = self.trans_table.lock().unwrap().get(&current.get_hash()) {
             if t_e.depth >= depth {
-                return t_e.eval;
+                return (t_e.eval, t_e.best_moves.clone());
             }
+        }
+
+        if self.times_up() {
+            return (0.0, vec![]);
         }
 
         if depth == 0 {
-            return self.quiescene_search(current, alpha, beta);
+            return (self.quiescene_search(current, alpha, beta), vec![]);
         }
 
-        for m in move_in_order(&current).into_iter() {
+        let mut max_eval = f32::NEG_INFINITY;
+        let mut best_moves = vec![];
+
+        for (i, m) in move_in_order(&current).into_iter().enumerate() {
             let after = current.make_move_new(m);
-            let mut eval = 0.0;
-
-            // capture bonus
-            if current.color_on(m.get_dest()) == Some(!current.side_to_move()) {
-                eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()];
-                eval -= PIECE_VALUE[current.piece_on(m.get_source()).unwrap().to_index()] * 0.25;
-            }
-
             let mut ext = 0;
             ext += (after.checkers().0 != 0) as usize;
 
-            eval -= self.search_alpha_beta(
+            let mut next_depth = depth as isize - 1 + ext.min(ext_depth) as isize;
+            next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
+
+            let (mut eval, mut moves) = self.search_alpha_beta(
                 after,
-                depth - 1 + ext.min(ext_depth),
+                next_depth.max(0) as usize,
                 ext_depth - ext,
                 -beta,
                 -alpha
             );
 
+            eval = -eval;
+
             if self.times_up() {
-                return 0.0;
+                return (0.0, vec![]);
             }
+
+            if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
+                (eval, moves) = self.search_alpha_beta(
+                    after,
+                    next_depth.max(0) as usize + 1,
+                    ext_depth - ext,
+                    -beta,
+                    -alpha
+                );
+
+                eval = -eval;
+            }
+
+            moves.push(m);
+
+            if self.times_up() {
+                return (0.0, moves);
+            }
+
+            // capture bonus
+            // if current.color_on(m.get_dest()) == Some(!current.side_to_move()) {
+            //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()];
+            // }
 
             self.trans_table.lock().unwrap().insert(current.get_hash(),
                 super::trans_table::TransTableEntry {
                     depth,
+                    best_moves: moves.clone(),
                     eval,
                     age: self.age,
                 }
             );
 
             if eval >= beta {
-                return eval;
-            } else if eval > alpha {
-                alpha = eval;
+                return (eval, moves);
+            } else if eval > max_eval {
+                max_eval = eval;
+                best_moves = moves;
+
+                if eval > alpha {
+                    alpha = eval;
+                }
             }
         }
 
-        alpha
+        (max_eval, best_moves)
     }
 
     pub fn quiescene_search(
@@ -159,6 +201,7 @@ impl super::Game {
         beta: f32,
     ) -> f32 {
         let eval = evaluate(&current);
+        let mut max_eval = eval;
 
         if eval >= beta {
             return eval;
@@ -176,12 +219,16 @@ impl super::Game {
 
             if eval >= beta {
                 return eval;
-            } else if eval > alpha {
-                alpha = eval;
+            } else if eval > max_eval {
+                max_eval = eval;
+
+                if eval > alpha {
+                    alpha = eval;
+                }
             }
         }
 
-        alpha
+        max_eval
     }
 }
 

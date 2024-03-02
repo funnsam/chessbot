@@ -18,6 +18,11 @@ fn eval_single(board: &Board, color: Color) -> f32 {
     eval += piece_value(board, color);
     eval += piece_square_table(board, color, oppo_end_weight) as f32;
 
+    // bishop pair bonus
+    if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
+        eval += PIECE_VALUE[0] * 0.5;
+    }
+
     eval
 }
 
@@ -74,6 +79,7 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> f32 {
 }
 
 pub const PIECE_VALUE: [f32; 6] = [100.0, 320.0, 330.0, 500.0, 900.0, 20000.0];
+pub const CENTIPAWN: f32 = PIECE_VALUE[0] / 100.0;
 
 // a1 ----> h1
 // |
