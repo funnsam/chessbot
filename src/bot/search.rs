@@ -70,7 +70,10 @@ impl super::Game {
 
             info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
 
-            if self.times_up() {
+            if moves.iter().filter(|a| a.1.is_infinite()).next().is_some() {
+                info!("found mate");
+                break;
+            } else if self.times_up() {
                 break;
             }
         }

@@ -19,9 +19,9 @@ fn eval_single(board: &Board, color: Color) -> f32 {
     eval += piece_square_table(board, color, oppo_end_weight) as f32;
 
     // bishop pair bonus
-    if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
-        eval += PIECE_VALUE[0] * 0.5;
-    }
+    // if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
+    //     eval += PIECE_VALUE[0] * 0.5;
+    // }
 
     eval
 }
