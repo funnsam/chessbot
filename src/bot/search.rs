@@ -70,10 +70,14 @@ impl super::Game {
 
             info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
 
-            if moves.iter().filter(|a| a.1.abs() == MAX_EVAL).next().is_some() {
-                info!("found mate");
-                break;
-            } else if self.times_up() {
+            // if moves.iter().filter(|a| a.1.abs() == MAX_EVAL).next().is_some() {
+            //     info!("found mate");
+            //     break;
+            // } else if self.times_up() {
+            //     break;
+            // }
+
+            if self.times_up() {
                 break;
             }
         }
@@ -93,7 +97,7 @@ impl super::Game {
             );
         }
 
-        let m = moves.first().unwrap().clone();
+        let m = moves.last().unwrap().clone();
         (m.0, m.1)
     }
 
