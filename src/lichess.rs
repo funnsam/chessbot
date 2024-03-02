@@ -68,7 +68,8 @@ impl LichessClient {
 
                     let client = Client::new();
                     if challenge["variant"]["key"] == "standard"
-                        && challenge["speed"] != "correspondence" {
+                        && challenge["speed"] != "correspondence"
+                        && !challenge["rated"].as_bool().unwrap() {
                         info!("`{}` challenged bot (id: `{}`)", user, id);
 
                         // FIX: post req

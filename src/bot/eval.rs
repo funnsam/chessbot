@@ -1,22 +1,22 @@
 use chess::*;
 
-pub fn evaluate(board: &Board) -> f32 {
+pub fn evaluate(board: &Board) -> i32 {
     let white_eval = eval_single(board, Color::White);
     let black_eval = eval_single(board, Color::Black);
 
-    let perspective = if matches!(board.side_to_move(), Color::White) { 1.0 } else { -1.0 };
+    let perspective = if matches!(board.side_to_move(), Color::White) { 1 } else { -1 };
 
     (white_eval - black_eval) * perspective
 }
 
 #[inline(always)]
-fn eval_single(board: &Board, color: Color) -> f32 {
-    let mut eval = 0.0;
+fn eval_single(board: &Board, color: Color) -> i32 {
+    let mut eval = 0;
 
     let oppo_end_weight = end_game_weight(board, !color);
 
     eval += piece_value(board, color);
-    eval += piece_square_table(board, color, oppo_end_weight) as f32;
+    eval += piece_square_table(board, color, oppo_end_weight);
 
     // bishop pair bonus
     // if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
@@ -26,27 +26,27 @@ fn eval_single(board: &Board, color: Color) -> f32 {
     eval
 }
 
-pub fn piece_value(board: &Board, color: Color) -> f32 {
+pub fn piece_value(board: &Board, color: Color) -> i32 {
     let color = board.color_combined(color);
-    (color & board.pieces(Piece::Pawn)).0.count_ones() as f32 * PIECE_VALUE[0]
-        + (color & board.pieces(Piece::Knight)).0.count_ones() as f32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).0.count_ones() as f32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).0.count_ones() as f32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).0.count_ones() as f32 * PIECE_VALUE[4]
+    (color & board.pieces(Piece::Pawn)).0.count_ones() as i32 * PIECE_VALUE[0]
+        + (color & board.pieces(Piece::Knight)).0.count_ones() as i32 * PIECE_VALUE[1]
+        + (color & board.pieces(Piece::Bishop)).0.count_ones() as i32 * PIECE_VALUE[2]
+        + (color & board.pieces(Piece::Rook)).0.count_ones() as i32 * PIECE_VALUE[3]
+        + (color & board.pieces(Piece::Queen)).0.count_ones() as i32 * PIECE_VALUE[4]
 }
 
 pub fn end_game_weight(board: &Board, color: Color) -> f32 {
     let color = board.color_combined(color);
-    let value = (color & board.pieces(Piece::Knight)).0.count_ones() as f32* PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).0.count_ones() as f32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).0.count_ones() as f32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).0.count_ones() as f32* PIECE_VALUE[4];
+    let value = (color & board.pieces(Piece::Knight)).0.count_ones() as i32 * PIECE_VALUE[1]
+        + (color & board.pieces(Piece::Bishop)).0.count_ones() as i32 * PIECE_VALUE[2]
+        + (color & board.pieces(Piece::Rook)).0.count_ones() as i32 * PIECE_VALUE[3]
+        + (color & board.pieces(Piece::Queen)).0.count_ones() as i32 * PIECE_VALUE[4];
 
     // value & formula from coding adventures
     1.0 - (value as f32 / 1650.0).min(1.0)
 }
 
-pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> f32 {
+pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     let mut value = 0.0;
 
     let our_pieces = board.color_combined(color);
@@ -75,11 +75,13 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> f32 {
             + PIECE_SQUARE_TABLE_END[idx] as f32 * end_weight;
     }
 
-    value as f32
+    value as i32
 }
 
-pub const PIECE_VALUE: [f32; 6] = [100.0, 320.0, 330.0, 500.0, 900.0, 20000.0];
-pub const CENTIPAWN: f32 = PIECE_VALUE[0] / 100.0;
+pub const PIECE_VALUE: [i32; 6] = [100, 320, 330, 500, 900, 20000];
+
+pub const MIN_EVAL: i32 = i32::MIN / 2;
+pub const MAX_EVAL: i32 = -MIN_EVAL;
 
 // a1 ----> h1
 // |

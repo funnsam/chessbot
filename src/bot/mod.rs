@@ -52,8 +52,8 @@ impl Game {
     pub fn play(&mut self) {
         let eval = self.quiescene_search(
             self.lichess.board.clone(),
-            f32::NEG_INFINITY,
-            f32::INFINITY
+            eval::MIN_EVAL,
+            eval::MAX_EVAL
         );
 
         info!(
@@ -71,7 +71,7 @@ impl Game {
             info!("start search");
             self.reserve_time();
             let (next, eval) = self.search();
-            info!("next move: {} (eval: {:.1})", next, eval);
+            info!("next move: {} (eval: {})", next, eval);
             info!("tt usage: {:.01}%", self.trans_table.lock().unwrap().usage() * 100.0);
             self.outgoing_moves.send(next).unwrap();
         }

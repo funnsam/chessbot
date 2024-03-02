@@ -5,8 +5,8 @@ use rayon::prelude::*;
 use std::sync::*;
 
 impl super::Game {
-    pub fn search(&mut self) -> (ChessMove, f32) {
-        let max_eval = Mutex::new(f32::NEG_INFINITY);
+    pub fn search(&mut self) -> (ChessMove, i32) {
+        let max_eval = Mutex::new(MIN_EVAL);
 
         let gen = MoveGen::new_legal(&self.lichess.board);
         let mut moves = Vec::with_capacity(gen.len());
@@ -17,7 +17,7 @@ impl super::Game {
             moves.push((m, eval, vec![]));
         }
 
-        moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        moves.sort_by_key(|a| -a.1);
 
         for i in 1..=MAX_SEARCH_DEPTH {
             let start = std::time::Instant::now();
@@ -32,7 +32,7 @@ impl super::Game {
                     board,
                     depth,
                     EXTEND_SEARCH_LIMIT,
-                    f32::NEG_INFINITY,
+                    MIN_EVAL,
                     -*max_eval.lock().unwrap(),
                 );
 
@@ -47,7 +47,7 @@ impl super::Game {
                         board,
                         depth + 1,
                         EXTEND_SEARCH_LIMIT,
-                        f32::NEG_INFINITY,
+                        MIN_EVAL,
                         -eval,
                     );
 
@@ -66,11 +66,11 @@ impl super::Game {
                 *best_moves = moves;
             });
 
-            moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            moves.sort_by_key(|a| -a.1);
 
             info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
 
-            if moves.iter().filter(|a| a.1.is_infinite()).next().is_some() {
+            if moves.iter().filter(|a| a.1.abs() == MAX_EVAL).next().is_some() {
                 info!("found mate");
                 break;
             } else if self.times_up() {
@@ -82,14 +82,14 @@ impl super::Game {
 
         for m in moves.iter() {
             dbg!(
-                "{} {} ({} ...)",
+                "{} {} ({}...)",
                 m.0,
                 m.1,
                 m.2.iter()
                     .rev()
-                    .map(|a| a.to_string())
+                    .map(|a| format!("{a} "))
                     .collect::<Vec<String>>()
-                    .join(" ")
+                    .join("")
             );
         }
 
@@ -102,13 +102,13 @@ impl super::Game {
         current: Board,
         depth: usize,
         ext_depth: usize,
-        mut alpha: f32,
-        beta: f32,
-    ) -> (f32, Vec<ChessMove>) {
+        mut alpha: i32,
+        beta: i32,
+    ) -> (i32, Vec<ChessMove>) {
         if matches!(current.status(), BoardStatus::Checkmate) {
-            return (f32::NEG_INFINITY, vec![]);
+            return (MIN_EVAL, vec![]);
         } else if matches!(current.status(), BoardStatus::Stalemate) {
-            return (0.0, vec![]);
+            return (0, vec![]);
         }
 
         if let Some(t_e) = self.trans_table.lock().unwrap().get(&current.get_hash()) {
@@ -118,14 +118,14 @@ impl super::Game {
         }
 
         if self.times_up() {
-            return (0.0, vec![]);
+            return (0, vec![]);
         }
 
         if depth == 0 {
             return (self.quiescene_search(current, alpha, beta), vec![]);
         }
 
-        let mut max_eval = f32::NEG_INFINITY;
+        let mut max_eval = MIN_EVAL;
         let mut best_moves = vec![];
 
         for (i, m) in move_in_order(&current).into_iter().enumerate() {
@@ -147,7 +147,7 @@ impl super::Game {
             eval = -eval;
 
             if self.times_up() {
-                return (0.0, vec![]);
+                return (0, vec![]);
             }
 
             if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
@@ -165,12 +165,12 @@ impl super::Game {
             moves.push(m);
 
             if self.times_up() {
-                return (0.0, moves);
+                return (0, moves);
             }
 
             // capture bonus
             // if current.color_on(m.get_dest()) == Some(!current.side_to_move()) {
-            //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()];
+            //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()] / 100;
             // }
 
             self.trans_table.lock().unwrap().insert(current.get_hash(),
@@ -200,9 +200,9 @@ impl super::Game {
     pub fn quiescene_search(
         &self,
         current: Board,
-        mut alpha: f32,
-        beta: f32,
-    ) -> f32 {
+        mut alpha: i32,
+        beta: i32,
+    ) -> i32 {
         let eval = evaluate(&current);
         let mut max_eval = eval;
 
