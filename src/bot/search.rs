@@ -14,25 +14,21 @@ impl super::Game {
         for m in gen {
             let board = self.lichess.board.make_move_new(m);
             let eval = super::eval::evaluate(&board);
-            moves.push((m, eval, vec![]));
+            moves.push((m, eval));
         }
 
         moves.sort_by_key(|a| -a.1);
 
-        for m in moves.iter() {
-            dbg!("{} {}", m.0, m.1);
-        }
-
         for i in 1..=MAX_SEARCH_DEPTH {
             let start = std::time::Instant::now();
 
-            moves.par_iter_mut().enumerate().for_each(|(j, (m, e, best_moves))| {
+            moves.par_iter_mut().enumerate().for_each(|(j, (m, e))| {
                 let board = self.lichess.board.make_move_new(*m);
 
                 let mut depth = i;
                 depth -= (j >= REDUCED_SEARCH_DEPTH) as usize;
 
-                let (mut eval, mut moves) = self.search_alpha_beta(
+                let mut eval = -self.search_alpha_beta(
                     board,
                     depth,
                     SEARCH_EXTENSION_LIMIT,
@@ -40,14 +36,12 @@ impl super::Game {
                     -*max_eval.lock().unwrap(),
                 );
 
-                eval = -eval;
-
                 if self.times_up() {
                     return;
                 }
 
                 if eval > *max_eval.lock().unwrap() && j >= REDUCED_SEARCH_DEPTH {
-                    let (new_eval, new_moves) = self.search_alpha_beta(
+                    let new_eval = self.search_alpha_beta(
                         board,
                         depth + 1,
                         SEARCH_EXTENSION_LIMIT,
@@ -57,7 +51,6 @@ impl super::Game {
 
                     if !self.times_up() {
                         eval = -new_eval;
-                        moves = new_moves;
                     }
                 }
 
@@ -66,8 +59,6 @@ impl super::Game {
                 }
 
                 *e = eval;
-                moves.push(*m);
-                *best_moves = moves;
             });
 
             moves.sort_by_key(|a| -a.1);
@@ -75,30 +66,20 @@ impl super::Game {
             info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
 
             if moves.iter().filter(|a| a.1 == MAX_EVAL).next().is_some() {
-                info!("found mate");
+                info!("found checkmate");
                 break;
             } else if self.times_up() {
                 break;
             }
         }
 
-        moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        moves.sort_by_key(|a| -a.1);
 
         for m in moves.iter() {
-            dbg!(
-                "{} {} ({}...)",
-                m.0,
-                m.1,
-                m.2.iter()
-                    .rev()
-                    .map(|a| format!("{a} "))
-                    .collect::<Vec<String>>()
-                    .join("")
-            );
+            dbg!("{} {}", m.0, m.1);
         }
 
-        let m = moves.first().unwrap().clone();
-        (m.0, m.1)
+        moves.first().unwrap().clone()
     }
 
     fn search_alpha_beta(
@@ -108,29 +89,28 @@ impl super::Game {
         ext_depth: usize,
         mut alpha: i32,
         beta: i32,
-    ) -> (i32, Vec<ChessMove>) {
+    ) -> i32 {
         if matches!(current.status(), BoardStatus::Checkmate) {
-            return (MIN_EVAL, vec![]);
+            return MIN_EVAL;
         } else if matches!(current.status(), BoardStatus::Stalemate) {
-            return (0, vec![]);
+            return 0;
         }
 
         if let Some(t_e) = self.trans_table.lock().unwrap().get(current.get_hash()) {
             if t_e.depth >= depth {
-                return (t_e.eval, vec![]);
+                return t_e.eval;
             }
         }
 
         if self.times_up() {
-            return (0, vec![]);
+            return 0;
         }
 
         if depth == 0 {
-            return (self.quiescene_search(current, alpha, beta), vec![]);
+            return self.quiescene_search(current, alpha, beta);
         }
 
         let mut max_eval = MIN_EVAL;
-        let mut best_moves = vec![];
 
         for (i, m) in move_in_order(&current).into_iter().enumerate() {
             let after = current.make_move_new(m);
@@ -141,7 +121,7 @@ impl super::Game {
             let mut next_depth = depth as isize - 1 + ext.min(ext_depth) as isize;
             next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
-            let (mut eval, mut moves) = self.search_alpha_beta(
+            let mut eval = -self.search_alpha_beta(
                 after,
                 next_depth.max(0) as usize,
                 ext_depth - ext,
@@ -149,28 +129,22 @@ impl super::Game {
                 -alpha
             );
 
-            eval = -eval;
-
             if self.times_up() {
-                return (0, vec![]);
+                return 0;
             }
 
             if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
-                (eval, moves) = self.search_alpha_beta(
+                eval = -self.search_alpha_beta(
                     after,
                     next_depth.max(0) as usize + 1,
                     ext_depth - ext,
                     -beta,
                     -alpha
                 );
-
-                eval = -eval;
             }
 
-            moves.push(m);
-
             if self.times_up() {
-                return (0, moves);
+                return 0;
             }
 
             // capture bonus
@@ -187,10 +161,9 @@ impl super::Game {
             );
 
             if eval >= beta {
-                return (eval, moves);
+                return eval;
             } else if eval > max_eval {
                 max_eval = eval;
-                best_moves = moves;
 
                 if eval > alpha {
                     alpha = eval;
@@ -198,7 +171,7 @@ impl super::Game {
             }
         }
 
-        (max_eval, best_moves)
+        max_eval
     }
 
     pub fn quiescene_search(
@@ -207,6 +180,12 @@ impl super::Game {
         mut alpha: i32,
         beta: i32,
     ) -> i32 {
+        if matches!(current.status(), BoardStatus::Checkmate) {
+            return MIN_EVAL;
+        } else if matches!(current.status(), BoardStatus::Stalemate) {
+            return 0;
+        }
+
         let eval = evaluate(&current);
         let mut max_eval = eval;
 
