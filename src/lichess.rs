@@ -67,9 +67,10 @@ impl LichessClient {
                     let user = challenge["challenger"]["name"].as_str().unwrap();
 
                     let client = Client::new();
-                    if challenge["variant"]["key"] == "standard"
+                    let is_me = user == "funnsam";
+                    if (challenge["variant"]["key"] == "standard"
                         && challenge["speed"] != "correspondence"
-                        && !challenge["rated"].as_bool().unwrap() {
+                        && !challenge["rated"].as_bool().unwrap()) || is_me {
                         info!("`{}` challenged bot (id: `{}`)", user, id);
 
                         // FIX: post req
@@ -136,9 +137,11 @@ impl LichessClient {
                             time_usable: std::time::Duration::from_secs(0),
                         }.run();
                     });
-
+                },
+                Some("gameFinish") => {
                     self.active_games.fetch_add(1, Ordering::Relaxed);
                 },
+                Some("challengeCanceled" | "challengeDeclined") => {},
                 Some(typ) => {
                     warn!("got unknown type of event `{}`", typ);
                     dbg!("{:?}", event);
@@ -207,15 +210,6 @@ impl LichessClient {
 
     async fn send_game(self: Arc<Self>, game_id: String, moves: Receiver<chess::ChessMove>) {
         while let Ok(m) = moves.recv() {
-            let mut m_uci = format!("{}{}", m.get_source(), m.get_dest());
-            m_uci += match m.get_promotion() {
-                Some(chess::Piece::Queen) => "q",
-                Some(chess::Piece::Rook) => "r",
-                Some(chess::Piece::Bishop) => "b",
-                Some(chess::Piece::Knight) => "n",
-                _ => "",
-            };
-
             // FIX: this fucking post request is hanging the streams
             // https://github.com/seanmonstar/reqwest/issues/2133
             //
@@ -228,7 +222,7 @@ impl LichessClient {
             let client = Client::new();
             let resp = client.execute(
                 client
-                    .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
+                    .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m}"))
                     .header("Authorization", format!("Bearer {}", self.api_token))
                     .build().unwrap()
             ).await.unwrap();
@@ -236,7 +230,7 @@ impl LichessClient {
             if !resp.status().is_success() {
                 let reason = json::parse(&resp.text().await.unwrap()).unwrap();
                 let reason = reason["error"].as_str().unwrap();
-                warn!("move {} invalid ({})", m_uci, reason);
+                warn!("move {} invalid ({})", m, reason);
             }
         }
     }

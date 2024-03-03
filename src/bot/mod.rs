@@ -72,7 +72,6 @@ impl Game {
             self.reserve_time();
             let (next, eval) = self.search();
             info!("next move: {} (eval: {})", next, eval);
-            info!("tt usage: {:.01}%", self.trans_table.lock().unwrap().usage() * 100.0);
             self.outgoing_moves.send(next).unwrap();
         }
     }

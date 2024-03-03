@@ -58,10 +58,10 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
         if matches!(color, Color::Black) {
             square = unsafe {
                 //   00111111
-                // - 00FFFRRR
+                // - 00RRRFFF
                 // ----------
                 //   00!!!!!!
-                //     FFFRRR
+                //     RRRFFF
                 //
                 // no carry can happen
                 Square::new(63 - square.to_int())
@@ -90,7 +90,7 @@ pub const MAX_EVAL: i32 = -MIN_EVAL;
 //
 // value mostly from https://www.chessprogramming.org/Simplified_Evaluation_Function
 // pawn endgame was added by me
-const PIECE_SQUARE_TABLE_MID: &[i32] = &[
+const PIECE_SQUARE_TABLE_MID: [i32; 64 * 6] = [
     // Pawn
       0,   0,   0,   0,   0,   0,   0,   0,
       5,  10,  10, -20, -20,  10,  10,   5,
@@ -147,7 +147,7 @@ const PIECE_SQUARE_TABLE_MID: &[i32] = &[
     -30, -40, -40, -50, -50, -40, -40, -30,
 ];
 
-const PIECE_SQUARE_TABLE_END: &[i32] = &[
+const PIECE_SQUARE_TABLE_END: [i32; 64 * 6] = [
     // Pawn
       0,   0,   0,   0,   0,   0,   0,   0,
     -20, -20, -20, -20, -20, -20, -20, -20,

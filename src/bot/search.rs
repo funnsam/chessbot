@@ -19,6 +19,10 @@ impl super::Game {
 
         moves.sort_by_key(|a| -a.1);
 
+        for m in moves.iter() {
+            dbg!("{} {}", m.0, m.1);
+        }
+
         for i in 1..=MAX_SEARCH_DEPTH {
             let start = std::time::Instant::now();
 
@@ -31,7 +35,7 @@ impl super::Game {
                 let (mut eval, mut moves) = self.search_alpha_beta(
                     board,
                     depth,
-                    EXTEND_SEARCH_LIMIT,
+                    SEARCH_EXTENSION_LIMIT,
                     MIN_EVAL,
                     -*max_eval.lock().unwrap(),
                 );
@@ -46,7 +50,7 @@ impl super::Game {
                     let (new_eval, new_moves) = self.search_alpha_beta(
                         board,
                         depth + 1,
-                        EXTEND_SEARCH_LIMIT,
+                        SEARCH_EXTENSION_LIMIT,
                         MIN_EVAL,
                         -eval,
                     );
@@ -70,7 +74,7 @@ impl super::Game {
 
             info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
 
-            if moves.iter().filter(|a| a.1.abs() == MAX_EVAL).next().is_some() {
+            if moves.iter().filter(|a| a.1 == MAX_EVAL).next().is_some() {
                 info!("found mate");
                 break;
             } else if self.times_up() {
@@ -111,9 +115,9 @@ impl super::Game {
             return (0, vec![]);
         }
 
-        if let Some(t_e) = self.trans_table.lock().unwrap().get(&current.get_hash()) {
+        if let Some(t_e) = self.trans_table.lock().unwrap().get(current.get_hash()) {
             if t_e.depth >= depth {
-                return (t_e.eval, t_e.best_moves.clone());
+                return (t_e.eval, vec![]);
             }
         }
 
@@ -132,6 +136,7 @@ impl super::Game {
             let after = current.make_move_new(m);
             let mut ext = 0;
             ext += (after.checkers().0 != 0) as usize;
+            ext += m.get_promotion().is_some() as usize;
 
             let mut next_depth = depth as isize - 1 + ext.min(ext_depth) as isize;
             next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
@@ -176,7 +181,6 @@ impl super::Game {
             self.trans_table.lock().unwrap().insert(current.get_hash(),
                 super::trans_table::TransTableEntry {
                     depth,
-                    best_moves: moves.clone(),
                     eval,
                     age: self.age,
                 }
