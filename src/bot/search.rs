@@ -110,7 +110,7 @@ impl super::Game {
             return self.quiescene_search(current, alpha, beta);
         }
 
-        let mut max_eval = MIN_EVAL;
+        // let mut max_eval = MIN_EVAL;
 
         for (i, m) in move_in_order(&current).into_iter().enumerate() {
             let after = current.make_move_new(m);
@@ -133,7 +133,8 @@ impl super::Game {
                 return 0;
             }
 
-            if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
+            // if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
+            if eval > alpha && i >= REDUCED_SEARCH_DEPTH {
                 eval = -self.search_alpha_beta(
                     after,
                     next_depth.max(0) as usize + 1,
@@ -161,17 +162,20 @@ impl super::Game {
             );
 
             if eval >= beta {
-                return eval;
-            } else if eval > max_eval {
-                max_eval = eval;
+                // return eval;
+                return beta;
+            // } else if eval > max_eval {
+                // max_eval = eval;
 
-                if eval > alpha {
-                    alpha = eval;
-                }
+                // if eval > alpha {
+            } else if eval > alpha {
+                alpha = eval;
+                // }
             }
         }
 
-        max_eval
+        // max_evar
+        alpha
     }
 
     pub fn quiescene_search(
@@ -187,10 +191,11 @@ impl super::Game {
         }
 
         let eval = evaluate(&current);
-        let mut max_eval = eval;
+        // let mut max_eval = eval;
 
         if eval >= beta {
-            return eval;
+            // return eval;
+            return beta;
         } else if eval > alpha {
             alpha = eval;
         }
@@ -205,16 +210,20 @@ impl super::Game {
 
             if eval >= beta {
                 return eval;
-            } else if eval > max_eval {
-                max_eval = eval;
+            // } else if eval > max_eval {
+            //     max_eval = eval;
 
-                if eval > alpha {
-                    alpha = eval;
-                }
+            //     if eval > alpha {
+            //         alpha = eval;
+            //     }
+            // }
+            } else if eval > alpha {
+                alpha = eval;
             }
         }
 
-        max_eval
+        // max_eval
+        alpha
     }
 }
 
