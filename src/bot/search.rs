@@ -6,8 +6,6 @@ use std::sync::*;
 
 impl super::Game {
     pub fn search(&mut self) -> (ChessMove, i32) {
-        let max_eval = Mutex::new(MIN_EVAL);
-
         let gen = MoveGen::new_legal(&self.lichess.board);
         let mut moves = Vec::with_capacity(gen.len());
 
@@ -17,9 +15,16 @@ impl super::Game {
             moves.push((m, eval));
         }
 
+        // reducing move time if there is a single move left
+        if moves.len() == 1 {
+            dbg!("only move is {}", moves[0].0);
+            return moves[0];
+        }
+
         moves.sort_by_key(|a| -a.1);
 
         for i in 1..=MAX_SEARCH_DEPTH {
+            let max_eval = Mutex::new(MIN_EVAL);
             let start = std::time::Instant::now();
 
             moves.par_iter_mut().enumerate().for_each(|(j, (m, e))| {
