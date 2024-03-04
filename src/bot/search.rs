@@ -41,7 +41,7 @@ impl super::Game {
                 }
 
                 if eval > *max_eval.lock().unwrap() && j >= REDUCED_SEARCH_DEPTH {
-                    let new_eval = self.search_alpha_beta(
+                    let new_eval = -self.search_alpha_beta(
                         board,
                         depth + 1,
                         SEARCH_EXTENSION_LIMIT,
@@ -50,7 +50,7 @@ impl super::Game {
                     );
 
                     if !self.times_up() {
-                        eval = -new_eval;
+                        eval = new_eval;
                     }
                 }
 
@@ -134,17 +134,17 @@ impl super::Game {
             }
 
             if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
-                eval = -self.search_alpha_beta(
+                let new_eval = -self.search_alpha_beta(
                     after,
                     next_depth.max(0) as usize + 1,
                     ext_depth - ext,
                     -beta,
                     -alpha
                 );
-            }
 
-            if self.times_up() {
-                return 0;
+                if !self.times_up() {
+                    eval = new_eval;
+                }
             }
 
             // capture bonus
