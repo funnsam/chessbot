@@ -19,7 +19,7 @@ fn eval_single(board: &Board, color: Color) -> i32 {
     eval += piece_square_table(board, color, oppo_end_weight);
 
     // bishop pair bonus
-    if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
+    if (board.color_combined(color) & board.pieces(Piece::Bishop)).popcnt() == 2 {
         eval += PIECE_VALUE[0] / 2;
     }
 
@@ -28,19 +28,19 @@ fn eval_single(board: &Board, color: Color) -> i32 {
 
 pub fn piece_value(board: &Board, color: Color) -> i32 {
     let color = board.color_combined(color);
-    (color & board.pieces(Piece::Pawn)).0.count_ones() as i32 * PIECE_VALUE[0]
-        + (color & board.pieces(Piece::Knight)).0.count_ones() as i32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).0.count_ones() as i32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).0.count_ones() as i32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).0.count_ones() as i32 * PIECE_VALUE[4]
+    (color & board.pieces(Piece::Pawn)).popcnt() as i32 * PIECE_VALUE[0]
+        + (color & board.pieces(Piece::Knight)).popcnt() as i32 * PIECE_VALUE[1]
+        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * PIECE_VALUE[2]
+        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * PIECE_VALUE[3]
+        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * PIECE_VALUE[4]
 }
 
 pub fn end_game_weight(board: &Board, color: Color) -> f32 {
     let color = board.color_combined(color);
-    let value = (color & board.pieces(Piece::Knight)).0.count_ones() as i32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).0.count_ones() as i32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).0.count_ones() as i32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).0.count_ones() as i32 * PIECE_VALUE[4];
+    let value = (color & board.pieces(Piece::Knight)).popcnt() as i32 * PIECE_VALUE[1]
+        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * PIECE_VALUE[2]
+        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * PIECE_VALUE[3]
+        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * PIECE_VALUE[4];
 
     // value & formula from coding adventures
     1.0 - (value as f32 / 1650.0).min(1.0)
