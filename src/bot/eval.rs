@@ -57,14 +57,7 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
         // invert square based on perspective
         if matches!(color, Color::Black) {
             square = unsafe {
-                //   00111111
-                // - 00RRRFFF
-                // ----------
-                //   00!!!!!!
-                //     RRRFFF
-                //
-                // no carry can happen
-                Square::new(63 - square.to_int())
+                Square::new(square.to_int() ^ 63)
             };
         }
 
@@ -78,8 +71,8 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     value as i32
 }
 
-// bishop value will be +50 centipawn if in pair
-pub const PIECE_VALUE: [i32; 6] = [100, 320, 275, 500, 900, 20000];
+// bishop value will be +25 centipawn if in pair
+pub const PIECE_VALUE: [i32; 6] = [100, 320, 305, 500, 900, 20000];
 
 pub const MIN_EVAL: i32 = i32::MIN / 2;
 pub const MAX_EVAL: i32 = -MIN_EVAL;
