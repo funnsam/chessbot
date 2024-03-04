@@ -19,9 +19,9 @@ fn eval_single(board: &Board, color: Color) -> i32 {
     eval += piece_square_table(board, color, oppo_end_weight);
 
     // bishop pair bonus
-    // if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
-    //     eval += PIECE_VALUE[0] * 0.5;
-    // }
+    if (board.color_combined(color) & board.pieces(Piece::Bishop)).0.count_ones() == 2 {
+        eval += PIECE_VALUE[0] / 2;
+    }
 
     eval
 }
@@ -78,7 +78,8 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     value as i32
 }
 
-pub const PIECE_VALUE: [i32; 6] = [100, 320, 330, 500, 900, 20000];
+// bishop value will be +50 if in pair
+pub const PIECE_VALUE: [i32; 6] = [100, 320, 275, 500, 900, 20000];
 
 pub const MIN_EVAL: i32 = i32::MIN / 2;
 pub const MAX_EVAL: i32 = -MIN_EVAL;
