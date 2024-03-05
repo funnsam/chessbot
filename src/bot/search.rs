@@ -101,7 +101,7 @@ impl super::Game {
             return 0;
         }
 
-        if let Some(t_e) = self.trans_table.lock().unwrap().get(current.get_hash()) {
+        if let Some(t_e) = self.trans_table.get(current.get_hash()) {
             if t_e.depth >= depth {
                 return t_e.eval;
             }
@@ -112,7 +112,7 @@ impl super::Game {
         }
 
         if depth == 0 {
-            return self.quiescene_search(current, alpha, beta);
+            return self.quiescene_search(current, alpha, beta, QUIESCENE_DEPTH);
         }
 
         let mut max_eval = MIN_EVAL;
@@ -122,8 +122,9 @@ impl super::Game {
             let mut ext = 0;
             ext += (after.checkers().0 != 0) as usize;
             ext += m.get_promotion().is_some() as usize;
+            let ext = ext.min(ext_depth);
 
-            let mut next_depth = depth as isize - 1 + ext.min(ext_depth) as isize;
+            let mut next_depth = depth as isize - 1 + ext as isize;
             next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
             let mut eval = -self.search_alpha_beta(
@@ -157,7 +158,7 @@ impl super::Game {
             //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()] / 100;
             // }
 
-            self.trans_table.lock().unwrap().insert(current.get_hash(),
+            self.trans_table.insert(current.get_hash(),
                 super::trans_table::TransTableEntry {
                     depth,
                     eval,
@@ -184,6 +185,7 @@ impl super::Game {
         current: Board,
         mut alpha: i32,
         beta: i32,
+        depth: usize,
     ) -> i32 {
         if matches!(current.status(), BoardStatus::Checkmate) {
             return MIN_EVAL;
@@ -200,13 +202,17 @@ impl super::Game {
             alpha = eval;
         }
 
+        if depth == 0 {
+            return eval;
+        }
+
         let mut movegen = MoveGen::new_legal(&current);
         let mask = current.color_combined(!current.side_to_move());
         movegen.set_iterator_mask(*mask);
 
         for m in movegen {
             let board = current.make_move_new(m);
-            let eval = -self.quiescene_search(board, -beta, -alpha);
+            let eval = -self.quiescene_search(board, -beta, -alpha, depth - 1);
 
             if eval >= beta {
                 return eval;

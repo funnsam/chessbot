@@ -3,7 +3,7 @@ mod search;
 pub mod trans_table;
 pub mod config;
 
-use std::sync::{*, mpsc::*};
+use std::sync::mpsc::*;
 use crate::lichess::LichessGame;
 use chess::*;
 use std::time::*;
@@ -13,7 +13,7 @@ pub struct Game {
     pub incoming_events: Receiver<GameEvent>,
     pub outgoing_moves: Sender<ChessMove>,
 
-    pub trans_table: Mutex<trans_table::TransTable>,
+    pub trans_table: trans_table::TransTable,
     pub age: usize,
 
     pub time_ctrl: TimeControl,
@@ -53,7 +53,8 @@ impl Game {
         let eval = self.quiescene_search(
             self.lichess.board.clone(),
             eval::MIN_EVAL,
-            eval::MAX_EVAL
+            eval::MAX_EVAL,
+            config::QUIESCENE_DEPTH,
         );
 
         info!(

@@ -19,7 +19,7 @@ impl TransTableEntry {
 
 pub struct HashTableEntry {
     pub hash: AtomicU64,
-    pub age_depth: AtomicU64, // top 32: age, low 32: depth
+    pub age_depth: AtomicU64,
     pub eval_checksum: AtomicU64,
 }
 
@@ -56,7 +56,7 @@ impl TransTable {
         }
     }
 
-    pub fn insert(&mut self, k: u64, v: TransTableEntry) {
+    pub fn insert(&self, k: u64, v: TransTableEntry) {
         let checksum = murmur3::murmur3_32(&mut v.to_u8s(), 0).unwrap();
 
         let age_depth = ((v.age as u64) << 32) | ((v.depth as u64) & 0xffff_ffff);
@@ -69,5 +69,26 @@ impl TransTable {
     }
 
     pub fn get(&self, k: u64) -> Option<TransTableEntry> {
+        let idx = k as usize & MASK;
+        let hash = self.inner[idx].hash.load(Ordering::Relaxed);
+        let age_depth = self.inner[idx].age_depth.load(Ordering::Relaxed);
+
+        if (hash ^ age_depth) != k {
+            return None;
+        }
+
+        let eval_checksum = self.inner[idx].eval_checksum.load(Ordering::Relaxed);
+        let checksum = eval_checksum as u32;
+        let entry = TransTableEntry {
+            depth: age_depth as usize & 0xffff_ffff,
+            age: (age_depth >> 32) as usize,
+            eval: (eval_checksum >> 32) as i32,
+        };
+
+        if checksum == murmur3::murmur3_32(&mut entry.to_u8s(), 0).unwrap() {
+            Some(entry)
+        } else {
+            None
+        }
     }
 }
