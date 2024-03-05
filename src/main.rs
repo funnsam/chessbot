@@ -1,3 +1,5 @@
+#![feature(inline_const)]
+
 #[macro_use]
 mod log;
 mod bot;
