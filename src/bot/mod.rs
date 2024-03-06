@@ -10,6 +10,8 @@ use std::time::*;
 
 pub struct Game {
     pub lichess: LichessGame,
+    pub moves: Vec<ChessMove>,
+
     pub outgoing_moves: Sender<ChessMove>,
 
     pub trans_table: trans_table::TransTable,
@@ -77,7 +79,11 @@ impl Game {
     pub fn run(mut self, events: Receiver<GameEvent>) {
         while let Ok(event) = events.recv() {
             match event {
-                GameEvent::FullGameState { wtime, btime, .. } => {
+                GameEvent::FullGameState { moves, wtime, btime, .. } => {
+                    for m in moves.split_whitespace() {
+                        self.moves.push(move_from_uci(m));
+                    }
+
                     self.time_ctrl = if matches!(self.lichess.color, Color::White) {
                         wtime
                     } else {
@@ -85,7 +91,7 @@ impl Game {
                     };
                     self.time_ref = Instant::now();
 
-                    self.play()
+                    self.play();
                 },
                 GameEvent::NextGameState { moves, wtime, btime, .. } => {
                     self.time_ctrl = if matches!(self.lichess.color, Color::White) {

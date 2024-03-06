@@ -127,7 +127,10 @@ impl LichessClient {
                     tokio::spawn(async move {
                         Game {
                             lichess: game,
+                            moves: Vec::new(),
+
                             outgoing_moves: moves_t,
+
                             trans_table: crate::bot::trans_table::TransTable::new(),
                             age: 1,
 

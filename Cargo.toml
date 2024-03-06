@@ -19,3 +19,5 @@ murmur3 = "0.5.2"
 codegen-units = 1
 lto = "fat"
 strip = "symbols"
+
+# overflow-checks = true

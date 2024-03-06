@@ -33,8 +33,11 @@ impl super::Game {
                 let mut depth = i;
                 depth -= (j >= REDUCED_SEARCH_DEPTH) as usize;
 
+                let mut moves = Vec::with_capacity(depth);
+
                 let mut eval = -self.search_alpha_beta(
                     board,
+                    &mut moves,
                     depth,
                     SEARCH_EXTENSION_LIMIT,
                     MIN_EVAL,
@@ -48,6 +51,7 @@ impl super::Game {
                 if eval > *max_eval.lock().unwrap() && j >= REDUCED_SEARCH_DEPTH {
                     let new_eval = -self.search_alpha_beta(
                         board,
+                        &mut moves,
                         depth + 1,
                         SEARCH_EXTENSION_LIMIT,
                         MIN_EVAL,
@@ -90,6 +94,7 @@ impl super::Game {
     fn search_alpha_beta(
         &self,
         current: Board,
+        moves: &mut Vec<ChessMove>, // reuse the same vec to avoid alloc
         depth: usize,
         ext_depth: usize,
         mut alpha: i32,
@@ -118,53 +123,85 @@ impl super::Game {
         let mut max_eval = MIN_EVAL;
 
         for (i, m) in move_in_order(&current).into_iter().enumerate() {
-            let after = current.make_move_new(m);
-            let mut ext = 0;
-            ext += (after.checkers().0 != 0) as usize;
-            ext += m.get_promotion().is_some() as usize;
-            let ext = ext.min(ext_depth);
+            // move | b-2 | w-1 | b-1 | w0 | b0 | w1 (m)
+            // idx  |egal_moves_per_turn[legal_moves_per_turn.len() - 1].clone(); -5  | -4  | -3  | -2 | -1 | 0
+            //  w-2 _____________________|
+            //         |_____________________|
+            //               |____________________|
 
-            let mut next_depth = depth as isize - 1 + ext as isize;
-            next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
-
-            let mut eval = -self.search_alpha_beta(
-                after,
-                next_depth.max(0) as usize,
-                ext_depth - ext,
-                -beta,
-                -alpha
-            );
-
-            if self.times_up() {
-                return 0;
+            // made for less pain
+            macro_rules! eq {
+                ($a: expr, $b: expr) => { $a == $b };
+                ($a: expr, $b: expr, $($rest: tt)+) => {
+                    $a == $b && eq!($b, $($rest)+)
+                }
             }
 
-            if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
-                let new_eval = -self.search_alpha_beta(
+            let mc = moves.len();
+            let eval = if !(
+                eq!(moves.get(mc - 11), moves.get(mc - 7), moves.get(mc - 3)) && // chain of 3 fold
+                eq!(moves.get(mc - 10), moves.get(mc - 6), moves.get(mc - 2)) && // detection
+                eq!(moves.get(mc - 9), moves.get(mc - 5), moves.get(mc - 1)) &&
+                eq!(moves.get(mc - 8), moves.get(mc - 4), Some(&m))
+            ) {
+                let after = current.make_move_new(m);
+                let mut ext = 0;
+                ext += (after.checkers().0 != 0) as usize;
+                ext += m.get_promotion().is_some() as usize;
+                let ext = ext.min(ext_depth);
+
+                let mut next_depth = depth as isize - 1 + ext as isize;
+                next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
+
+                moves.push(m);
+
+                let mut eval = -self.search_alpha_beta(
                     after,
-                    (next_depth + 1).max(0) as usize,
+                    moves,
+                    next_depth.max(0) as usize,
                     ext_depth - ext,
                     -beta,
                     -alpha
                 );
 
-                if !self.times_up() {
-                    eval = new_eval;
+                if self.times_up() {
+                    return 0;
                 }
-            }
 
-            // capture bonus
-            // if current.color_on(m.get_dest()) == Some(!current.side_to_move()) {
-            //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()] / 100;
-            // }
+                if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
+                    let new_eval = -self.search_alpha_beta(
+                        after,
+                        moves,
+                        (next_depth + 1).max(0) as usize,
+                        ext_depth - ext,
+                        -beta,
+                        -alpha
+                    );
 
-            self.trans_table.insert(current.get_hash(),
-                super::trans_table::TransTableEntry {
-                    depth,
-                    eval,
-                    age: self.age,
+                    if !self.times_up() {
+                        eval = new_eval;
+                    }
                 }
-            );
+
+                moves.pop();
+
+                // capture bonus
+                // if current.color_on(m.get_dest()) == Some(!current.side_to_move()) {
+                //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()] / 100;
+                // }
+
+                self.trans_table.insert(current.get_hash(),
+                    super::trans_table::TransTableEntry {
+                        depth,
+                        eval,
+                        age: self.age,
+                    }
+                );
+
+                eval
+            } else {
+                0
+            };
 
             if eval >= beta {
                 return eval;
