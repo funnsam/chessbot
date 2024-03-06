@@ -127,7 +127,6 @@ impl LichessClient {
                     tokio::spawn(async move {
                         Game {
                             lichess: game,
-                            incoming_events: event_r,
                             outgoing_moves: moves_t,
                             trans_table: crate::bot::trans_table::TransTable::new(),
                             age: 1,
@@ -135,7 +134,7 @@ impl LichessClient {
                             time_ctrl: TimeControl::default(),
                             time_ref: std::time::Instant::now(),
                             time_usable: std::time::Duration::from_secs(0),
-                        }.run();
+                        }.run(event_r);
                     });
                 },
                 Some("gameFinish") => {

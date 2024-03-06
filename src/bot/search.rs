@@ -142,7 +142,7 @@ impl super::Game {
             if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
                 let new_eval = -self.search_alpha_beta(
                     after,
-                    next_depth.max(0) as usize + 1,
+                    (next_depth + 1).max(0) as usize,
                     ext_depth - ext,
                     -beta,
                     -alpha

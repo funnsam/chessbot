@@ -10,7 +10,6 @@ use std::time::*;
 
 pub struct Game {
     pub lichess: LichessGame,
-    pub incoming_events: Receiver<GameEvent>,
     pub outgoing_moves: Sender<ChessMove>,
 
     pub trans_table: trans_table::TransTable,
@@ -46,8 +45,6 @@ pub struct TimeControl {
     pub time_incr: usize,
 }
 
-unsafe impl Sync for Game {}
-
 impl Game {
     pub fn play(&mut self) {
         let eval = self.quiescene_search(
@@ -77,8 +74,8 @@ impl Game {
         }
     }
 
-    pub fn run(mut self) {
-        while let Ok(event) = self.incoming_events.recv() {
+    pub fn run(mut self, events: Receiver<GameEvent>) {
+        while let Ok(event) = events.recv() {
             match event {
                 GameEvent::FullGameState { wtime, btime, .. } => {
                     self.time_ctrl = if matches!(self.lichess.color, Color::White) {
