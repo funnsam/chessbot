@@ -49,8 +49,8 @@ pub struct TimeControl {
 
 impl Game {
     pub fn play(&mut self) {
-        let eval = self.quiescene_search(
-            self.lichess.board.clone(),
+        let eval = Self::quiescene_search(
+            self.lichess.board,
             eval::MIN_EVAL,
             eval::MAX_EVAL
         );
@@ -137,25 +137,21 @@ impl Game {
 fn move_from_uci(m: &str) -> ChessMove {
     let src = &m[0..2];
     let src = unsafe {
-        Square::new(((src.as_bytes()[1] as u8 - b'1') << 3) + (src.as_bytes()[0] as u8 - b'a'))
+        Square::new(((src.as_bytes()[1] - b'1') << 3) + (src.as_bytes()[0] - b'a'))
     };
 
     let dst = &m[2..4];
     let dst = unsafe {
-        Square::new(((dst.as_bytes()[1] as u8 - b'1') << 3) + (dst.as_bytes()[0] as u8 - b'a'))
+        Square::new(((dst.as_bytes()[1] - b'1') << 3) + (dst.as_bytes()[0] - b'a'))
     };
 
-    let piece = if let Some(p) = m.chars().nth(4) {
-        match p {
-            'n' => Some(Piece::Knight),
-            'b' => Some(Piece::Bishop),
-            'q' => Some(Piece::Queen),
-            'r' => Some(Piece::Rook),
-            _ => None,
-        }
-    } else {
-        None
-    };
+    let piece = m.as_bytes().get(4).and_then(|p| match p {
+        b'n' => Some(Piece::Knight),
+        b'b' => Some(Piece::Bishop),
+        b'q' => Some(Piece::Queen),
+        b'r' => Some(Piece::Rook),
+        _ => None,
+    });
 
     ChessMove::new(src, dst, piece)
 }

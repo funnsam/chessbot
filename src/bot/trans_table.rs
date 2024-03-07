@@ -13,7 +13,7 @@ pub struct TransTableEntry {
 impl TransTableEntry {
     #[inline(always)]
     fn to_u8s<'a>(&'a self) -> &'a [u8] {
-        &*unsafe { transmute::<_, &'a [u8; size_of::<Self>()]>(self) }
+        unsafe { transmute::<_, &'a [u8; size_of::<Self>()]>(self) }
     }
 }
 
@@ -39,8 +39,9 @@ pub struct TransTable {
 
 impl TransTable {
     pub fn new() -> Self {
-        use core::mem::*;
-        let mut inner = Box::new([const { MaybeUninit::uninit() }; T_TABLE_SIZE]);
+        let inner = Box::<[MaybeUninit<HashTableEntry>; T_TABLE_SIZE]>::new_uninit();
+        let mut inner = unsafe { inner.assume_init() };
+
         for i in inner.iter_mut() {
             *i = MaybeUninit::new(HashTableEntry {
                 hash: AtomicU64::new(0),

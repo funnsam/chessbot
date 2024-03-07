@@ -2,7 +2,7 @@ use chess::*;
 use super::config::*;
 use super::eval::*;
 use rayon::prelude::*;
-use std::sync::*;
+use std::sync::atomic::*;
 
 impl super::Game {
     pub fn search(&mut self) -> (ChessMove, i32) {
@@ -24,7 +24,7 @@ impl super::Game {
         moves.sort_by_key(|a| -a.1);
 
         for i in 1..=MAX_SEARCH_DEPTH {
-            let max_eval = Mutex::new(MIN_EVAL);
+            let max_eval = AtomicI32::new(MIN_EVAL);
             let start = std::time::Instant::now();
 
             moves.par_iter_mut().enumerate().for_each(|(j, (m, e))| {
@@ -42,14 +42,14 @@ impl super::Game {
                     depth,
                     SEARCH_EXTENSION_LIMIT,
                     MIN_EVAL,
-                    -*max_eval.lock().unwrap(),
+                    -max_eval.load(Ordering::Relaxed),
                 );
 
                 if self.times_up() {
                     return;
                 }
 
-                if eval > *max_eval.lock().unwrap() && j >= REDUCED_SEARCH_DEPTH {
+                if j >= REDUCED_SEARCH_DEPTH && eval > max_eval.load(Ordering::Relaxed) {
                     let new_eval = -self.search_alpha_beta(
                         board,
                         &mut moves,
@@ -64,8 +64,8 @@ impl super::Game {
                     }
                 }
 
-                if eval > *max_eval.lock().unwrap() {
-                    *max_eval.lock().unwrap() = eval;
+                if eval > max_eval.load(Ordering::Relaxed) {
+                    max_eval.store(eval, Ordering::Relaxed);
                 }
 
                 *e = eval;
@@ -75,7 +75,7 @@ impl super::Game {
 
             info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
 
-            if moves.iter().filter(|a| a.1 == MAX_EVAL).next().is_some() {
+            if moves.iter().any(|a| a.1 == MAX_EVAL) {
                 info!("found checkmate");
                 break;
             } else if self.times_up() {
@@ -89,7 +89,7 @@ impl super::Game {
             dbg!("{} {}", m.0, m.1);
         }
 
-        moves.first().unwrap().clone()
+        *moves.first().unwrap()
     }
 
     fn search_alpha_beta(
@@ -118,7 +118,7 @@ impl super::Game {
         }
 
         if depth == 0 {
-            return self.quiescene_search(current, alpha, beta);
+            return Self::quiescene_search(current, alpha, beta);
         }
 
         let mut max_eval = MIN_EVAL;
@@ -219,7 +219,6 @@ impl super::Game {
     }
 
     pub fn quiescene_search(
-        &self,
         current: Board,
         mut alpha: i32,
         beta: i32,
@@ -245,7 +244,7 @@ impl super::Game {
 
         for m in movegen {
             let board = current.make_move_new(m);
-            let eval = -self.quiescene_search(board, -beta, -alpha);
+            let eval = -Self::quiescene_search(board, -beta, -alpha);
 
             if eval >= beta {
                 return eval;
@@ -263,7 +262,7 @@ impl super::Game {
 }
 
 fn move_in_order(board: &Board) -> Vec<ChessMove> {
-    let gen = MoveGen::new_legal(&board);
+    let gen = MoveGen::new_legal(board);
     let mut buf = Vec::with_capacity(gen.len());
 
     buf.extend(gen);

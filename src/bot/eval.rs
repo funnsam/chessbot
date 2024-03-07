@@ -63,9 +63,10 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
 
         let idx = square.to_index() | (typ.to_index() << 6);
 
-        value +=
-            PIECE_SQUARE_TABLE_MID[idx] as f32 * (1.0 - end_weight)
-            + PIECE_SQUARE_TABLE_END[idx] as f32 * end_weight;
+        value += (PIECE_SQUARE_TABLE_MID[idx] as f32).mul_add(
+            1.0 - end_weight,
+            PIECE_SQUARE_TABLE_END[idx] as f32 * end_weight
+        );
     }
 
     value as i32

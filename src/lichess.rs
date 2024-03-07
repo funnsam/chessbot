@@ -261,13 +261,13 @@ pub struct LichessGame {
     pub board: chess::Board,
 }
 
-struct NdJsonIter<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>>> {
+struct NdJsonIter<S: Send + futures_util::stream::Stream<Item = Result<bytes::Bytes>>> {
     stream: S,
     buffer: Vec<u8>,
     leftover: Vec<u8>,
 }
 
-impl<S: futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpin> NdJsonIter<S> {
+impl<S: Send + futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::marker::Unpin> NdJsonIter<S> {
     fn new(stream: S) -> Self {
         Self {
             stream,
