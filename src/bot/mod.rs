@@ -52,8 +52,7 @@ impl Game {
         let eval = self.quiescene_search(
             self.lichess.board.clone(),
             eval::MIN_EVAL,
-            eval::MAX_EVAL,
-            config::QUIESCENE_DEPTH,
+            eval::MAX_EVAL
         );
 
         info!(
@@ -103,6 +102,7 @@ impl Game {
 
                     let m = move_from_uci(moves.split_whitespace().last().unwrap());
                     self.lichess.board = self.lichess.board.make_move_new(m);
+                    self.moves.push(m);
 
                     self.play();
                 },

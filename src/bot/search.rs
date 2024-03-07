@@ -33,7 +33,8 @@ impl super::Game {
                 let mut depth = i;
                 depth -= (j >= REDUCED_SEARCH_DEPTH) as usize;
 
-                let mut moves = Vec::with_capacity(depth);
+                let mut moves = self.moves.clone();
+                moves.push(*m);
 
                 let mut eval = -self.search_alpha_beta(
                     board,
@@ -117,7 +118,7 @@ impl super::Game {
         }
 
         if depth == 0 {
-            return self.quiescene_search(current, alpha, beta, QUIESCENE_DEPTH);
+            return self.quiescene_search(current, alpha, beta);
         }
 
         let mut max_eval = MIN_EVAL;
@@ -222,7 +223,6 @@ impl super::Game {
         current: Board,
         mut alpha: i32,
         beta: i32,
-        depth: usize,
     ) -> i32 {
         if matches!(current.status(), BoardStatus::Checkmate) {
             return MIN_EVAL;
@@ -239,17 +239,13 @@ impl super::Game {
             alpha = eval;
         }
 
-        if depth == 0 {
-            return eval;
-        }
-
         let mut movegen = MoveGen::new_legal(&current);
         let mask = current.color_combined(!current.side_to_move());
         movegen.set_iterator_mask(*mask);
 
         for m in movegen {
             let board = current.make_move_new(m);
-            let eval = -self.quiescene_search(board, -beta, -alpha, depth - 1);
+            let eval = -self.quiescene_search(board, -beta, -alpha);
 
             if eval >= beta {
                 return eval;
