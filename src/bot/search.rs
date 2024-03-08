@@ -123,13 +123,7 @@ impl super::Game {
 
         let mut max_eval = MIN_EVAL;
 
-        for (i, m) in move_in_order(&current).into_iter().enumerate() {
-            // move | b-2 | w-1 | b-1 | w0 | b0 | w1 (m)
-            // idx  |egal_moves_per_turn[legal_moves_per_turn.len() - 1].clone(); -5  | -4  | -3  | -2 | -1 | 0
-            //  w-2 _____________________|
-            //         |_____________________|
-            //               |____________________|
-
+        for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
             // made for less pain
             macro_rules! eq {
                 ($a: expr, $b: expr) => { $a == $b };
@@ -151,38 +145,59 @@ impl super::Game {
                 ext += m.get_promotion().is_some() as usize;
                 let ext = ext.min(ext_depth);
 
-                let mut next_depth = depth as isize - 1 + ext as isize;
-                next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
-
                 moves.push(m);
 
-                let mut eval = -self.search_alpha_beta(
-                    after,
-                    moves,
-                    next_depth.max(0) as usize,
-                    ext_depth - ext,
-                    -beta,
-                    -alpha
-                );
+                let mut do_pvs = |depth: isize| {
+                    if i == 0 {
+                        -self.search_alpha_beta(
+                            after,
+                            moves,
+                            depth.max(0) as usize,
+                            ext_depth - ext,
+                            -beta,
+                            -alpha
+                        )
+                    } else {
+                        let eval = -self.search_alpha_beta(
+                            after,
+                            moves,
+                            depth.max(0) as usize,
+                            ext_depth - ext,
+                            -alpha - 1,
+                            -alpha
+                        );
+
+                        if eval > alpha && eval < beta {
+                            -self.search_alpha_beta(
+                                after,
+                                moves,
+                                depth.max(0) as usize,
+                                ext_depth - ext,
+                                -beta,
+                                -alpha
+                            )
+                        } else {
+                            eval
+                        }
+                    }
+                };
+
+                let mut next_depth = depth as isize - 1 + ext as isize;
+                // next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
+
+                let mut eval = do_pvs(next_depth);
 
                 if self.times_up() {
                     return 0;
                 }
 
-                if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
-                    let new_eval = -self.search_alpha_beta(
-                        after,
-                        moves,
-                        (next_depth + 1).max(0) as usize,
-                        ext_depth - ext,
-                        -beta,
-                        -alpha
-                    );
+                // if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
+                //     let new_eval = do_pvs(next_depth + 1);
 
-                    if !self.times_up() {
-                        eval = new_eval;
-                    }
-                }
+                //     if !self.times_up() {
+                //         eval = new_eval;
+                //     }
+                // }
 
                 moves.pop();
 
@@ -259,20 +274,19 @@ impl super::Game {
 
         max_eval
     }
-}
 
-fn move_in_order(board: &Board) -> Vec<ChessMove> {
-    let gen = MoveGen::new_legal(board);
-    let mut buf = Vec::with_capacity(gen.len());
+    fn move_in_order(&self, board: &Board) -> Vec<ChessMove> {
+        let gen = MoveGen::new_legal(board);
+        let mut buf = Vec::with_capacity(gen.len());
 
-    buf.extend(gen);
+        buf.extend(gen);
 
-    buf.sort_by(|a, b| {
-        let a = evaluate(&board.make_move_new(*a));
-        let b = evaluate(&board.make_move_new(*b));
+        buf.sort_by_cached_key(|a| {
+            let a = board.make_move_new(*a);
 
-        a.partial_cmp(&b).unwrap()
-    });
+            self.trans_table.get(a.get_hash()).map_or_else(|| evaluate(&a), |a| a.eval)
+        });
 
-    buf
+        buf
+    }
 }

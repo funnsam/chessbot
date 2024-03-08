@@ -3,18 +3,24 @@ use std::sync::{atomic::*, mpsc::*, Arc};
 use std::str::FromStr;
 use crate::bot::*;
 
+const DISALLOWED_TIME_CONTROLS: &[&str] = &["correspondence", "classical"];
+const EXCEPTION_USERS: &[&str] = &["funnsam"];
+const ACCEPT_RATED: bool = false;
+
 pub struct LichessClient {
     client: Client,
 
     // FIX: see somewhere in LichessClient::send_game()
     api_token: String,
 
+    name: String,
+
     pub enable_pair: AtomicBool,
     pub active_games: AtomicUsize,
 }
 
 impl LichessClient {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         let api_token = std::fs::read_to_string(".token").unwrap().trim().to_string();
 
         let mut headers = header::HeaderMap::new();
@@ -29,9 +35,17 @@ impl LichessClient {
             .connection_verbose(true)
             .build().unwrap();
 
+        let user = json::parse(&client.execute(
+            client
+                .get("https://lichess.org/api/account")
+                .build().unwrap()
+        ).await.unwrap().text().await.unwrap()).unwrap();
+
         Self {
             client,
+
             api_token,
+            name: user["id"].as_str().unwrap().to_string(),
 
             enable_pair: AtomicBool::new(false),
             active_games: AtomicUsize::new(0),
@@ -39,6 +53,8 @@ impl LichessClient {
     }
 
     pub async fn start(self) {
+        info!("client logged in as `{}`", self.name);
+
         let li = Arc::new(self);
 
         {
@@ -67,10 +83,15 @@ impl LichessClient {
                     let user = challenge["challenger"]["name"].as_str().unwrap();
 
                     let client = Client::new();
-                    let is_me = user == "funnsam";
-                    if (challenge["variant"]["key"] == "standard"
-                        && challenge["speed"] != "correspondence"
-                        && !challenge["rated"].as_bool().unwrap()) || is_me {
+
+                    let variant = challenge["variant"]["key"].as_str().unwrap();
+                    let time_ctrl = challenge["speed"].as_str().unwrap();
+                    let is_rated = challenge["rated"].as_bool().unwrap();
+                    if EXCEPTION_USERS.contains(&user) || (
+                        variant == "standard"
+                        && !DISALLOWED_TIME_CONTROLS.contains(&time_ctrl)
+                        && (ACCEPT_RATED || !is_rated)
+                    ) {
                         info!("`{}` challenged bot (id: `{}`)", user, id);
 
                         // FIX: post req

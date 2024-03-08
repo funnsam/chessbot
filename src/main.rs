@@ -25,5 +25,5 @@ async fn main() {
         .thread_name(|i| format!("rayon_pool_thread_{i}"))
         .build_global().unwrap();
 
-    lichess::LichessClient::new().start().await;
+    lichess::LichessClient::new().await.start().await;
 }
