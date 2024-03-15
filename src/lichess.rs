@@ -106,12 +106,10 @@ impl LichessClient {
 
                     info!("started a game with `{}` (id: `{}`, fen: `{}`)", user, id, fen);
 
-                    let game = LichessGame { id, color, board };
-
                     let (event_t, event_r) = channel();
 
                     {
-                        let id = game.id.clone();
+                        let id = id.clone();
                         let arc = Arc::clone(&self);
                         tokio::spawn(async move { arc.listen_game(id, event_t).await });
                     }
@@ -119,26 +117,12 @@ impl LichessClient {
                     let (moves_t, moves_r) = channel();
 
                     {
-                        let id = game.id.clone();
+                        let id = id.clone();
                         let arc = Arc::clone(&self);
                         tokio::spawn(async move { arc.send_game(id, moves_r).await });
                     }
 
-                    tokio::spawn(async move {
-                        Game {
-                            lichess: game,
-                            moves: Vec::new(),
-
-                            outgoing_moves: moves_t,
-
-                            trans_table: crate::bot::trans_table::TransTable::new(),
-                            age: 1,
-
-                            time_ctrl: TimeControl::default(),
-                            time_ref: std::time::Instant::now(),
-                            time_usable: std::time::Duration::from_secs(0),
-                        }.run(event_r);
-                    });
+                    tokio::spawn(async move { Game::new(id, color, board, moves_t).run(event_r) });
                 },
                 Some("gameFinish") => {
                     self.active_games.fetch_add(1, Ordering::Relaxed);
@@ -183,6 +167,7 @@ impl LichessClient {
                 },
                 Some("gameState") => {
                     let state = &event;
+                    // TODO: only send when is side to move
                     events.send(GameEvent::NextGameState {
                         moves: state["moves"].as_str().unwrap().to_string(),
                         wtime: TimeControl {
@@ -254,13 +239,6 @@ impl LichessClient {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LichessGame {
-    pub id: String,
-    pub color: chess::Color,
-    pub board: chess::Board,
-}
-
 struct NdJsonIter<S: Send + futures_util::stream::Stream<Item = Result<bytes::Bytes>>> {
     stream: S,
     buffer: Vec<u8>,
@@ -317,4 +295,26 @@ pub enum ServerCommand {
     AutoChallenge {
         enable: bool,
     },
+}
+
+fn move_from_uci(m: &str) -> ChessMove {
+    let src = &m[0..2];
+    let src = unsafe {
+        Square::new(((src.as_bytes()[1] - b'1') << 3) + (src.as_bytes()[0] - b'a'))
+    };
+
+    let dst = &m[2..4];
+    let dst = unsafe {
+        Square::new(((dst.as_bytes()[1] - b'1') << 3) + (dst.as_bytes()[0] - b'a'))
+    };
+
+    let piece = m.as_bytes().get(4).and_then(|p| match p {
+        b'n' => Some(Piece::Knight),
+        b'b' => Some(Piece::Bishop),
+        b'q' => Some(Piece::Queen),
+        b'r' => Some(Piece::Rook),
+        _ => None,
+    });
+
+    ChessMove::new(src, dst, piece)
 }
