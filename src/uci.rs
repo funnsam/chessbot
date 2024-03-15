@@ -19,6 +19,7 @@ impl UciClient {
         let mut last_move = None;
 
         while let Some(Ok(l)) = lines.next() {
+            info!("uci: `{}`", l);
             let tokens = l.split_whitespace();
             match parse_command(tokens) {
                 Some(UciCommand::Uci) => {
@@ -35,7 +36,9 @@ impl UciClient {
                         let (moves_t, moves_r) = channel();
                         let (event_t, event_r) = channel();
 
-                        let mut new_game = Game::new("".to_string(), position.side_to_move(), position, moves_t);
+                        let invert = moves.len() & 1 == 1;
+
+                        let mut new_game = Game::new("".to_string(), if !invert { position.side_to_move() } else { !position.side_to_move() }, position, moves_t);
 
                         game = Some(event_t);
 
@@ -68,7 +71,9 @@ impl UciClient {
                         });
                     }
                 },
-                None => {},
+                None => {
+                    warn!("got unknown uci command");
+                },
             }
         }
     }
@@ -122,9 +127,18 @@ fn parse_command<'a, T: Iterator<Item = &'a str>>(mut token: T) -> Option<UciCom
             let mut moves = Vec::new();
             let next = token.next();
             let board = if matches!(next, Some("fen")) {
-                let fen = token.next();
-                token.next();
-                Board::from_str(fen?).ok()?
+                let mut fen = String::new();
+
+                while let Some(t) = token.next() {
+                    if t == "moves" {
+                        break;
+                    }
+
+                    fen += t;
+                    fen += " ";
+                }
+
+                Board::from_str(fen.trim()).ok()?
             } else if matches!(next, Some("startpos")) {
                 token.next();
                 Board::default()
