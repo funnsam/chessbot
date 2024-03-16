@@ -6,11 +6,11 @@ use std::sync::atomic::*;
 
 impl super::Game {
     pub fn search(&mut self) -> (ChessMove, i32) {
-        let gen = MoveGen::new_legal(&self.lichess.board);
+        let gen = MoveGen::new_legal(&self.board);
         let mut moves = Vec::with_capacity(gen.len());
 
         for m in gen {
-            let board = self.lichess.board.make_move_new(m);
+            let board = self.board.make_move_new(m);
             let eval = super::eval::evaluate(&board);
             moves.push((m, eval));
         }
@@ -28,7 +28,7 @@ impl super::Game {
             let start = std::time::Instant::now();
 
             moves.par_iter_mut().enumerate().for_each(|(j, (m, e))| {
-                let board = self.lichess.board.make_move_new(*m);
+                let board = self.board.make_move_new(*m);
 
                 let mut depth = i;
                 depth -= (j >= REDUCED_SEARCH_DEPTH) as usize;

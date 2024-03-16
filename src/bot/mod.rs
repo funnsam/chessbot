@@ -4,12 +4,14 @@ pub mod trans_table;
 pub mod config;
 
 use std::sync::mpsc::*;
-use crate::lichess::LichessGame;
 use chess::*;
 use std::time::*;
 
 pub struct Game {
-    pub lichess: LichessGame,
+    pub id: String,
+    pub color: chess::Color,
+    pub board: chess::Board,
+
     pub moves: Vec<ChessMove>,
 
     pub outgoing_moves: Sender<ChessMove>,
@@ -25,16 +27,18 @@ pub struct Game {
 #[derive(Debug)]
 pub enum GameEvent {
     FullGameState {
-        moves: String,
+        // moves: String,
+        moves: Vec<ChessMove>,
         wtime: TimeControl,
         btime: TimeControl,
-        status: String,
+        // status: String,
     },
     NextGameState {
-        moves: String,
+        // moves: String,
+        new_move: ChessMove,
         wtime: TimeControl,
         btime: TimeControl,
-        status: String,
+        // status: String,
     },
     OpponentGone,
     OpponentBack,
@@ -48,30 +52,50 @@ pub struct TimeControl {
 }
 
 impl Game {
+    pub fn new(id: String, color: chess::Color, board: chess::Board, outgoing_moves: Sender<ChessMove>) -> Self {
+        Game {
+            id,
+            color,
+            board,
+            moves: Vec::new(),
+
+            outgoing_moves,
+
+            trans_table: crate::bot::trans_table::TransTable::new(),
+            age: 1,
+
+            time_ctrl: TimeControl::default(),
+            time_ref: std::time::Instant::now(),
+            time_usable: std::time::Duration::from_secs(0),
+        }
+    }
+
     pub fn play(&mut self) {
         let eval = Self::quiescene_search(
-            self.lichess.board,
+            self.board,
             eval::MIN_EVAL,
             eval::MAX_EVAL
         );
 
         info!(
             "game `{}` eval {:.1} (for {})",
-            &self.lichess.id,
+            &self.id,
             eval,
-            match self.lichess.board.side_to_move() {
+            match self.board.side_to_move() {
                 Color::White => "white",
                 Color::Black => "black",
             }
         );
 
-        if self.lichess.board.side_to_move() == self.lichess.color {
+        if self.board.side_to_move() == self.color {
             self.age += 1;
             info!("start search");
             self.reserve_time();
             let (next, eval) = self.search();
             info!("next move: {} (eval: {})", next, eval);
             self.outgoing_moves.send(next).unwrap();
+
+            self.board = self.board.make_move_new(next);
         }
     }
 
@@ -79,11 +103,9 @@ impl Game {
         while let Ok(event) = events.recv() {
             match event {
                 GameEvent::FullGameState { moves, wtime, btime, .. } => {
-                    for m in moves.split_whitespace() {
-                        self.moves.push(move_from_uci(m));
-                    }
+                    self.moves = moves;
 
-                    self.time_ctrl = if matches!(self.lichess.color, Color::White) {
+                    self.time_ctrl = if matches!(self.color, Color::White) {
                         wtime
                     } else {
                         btime
@@ -92,17 +114,16 @@ impl Game {
 
                     self.play();
                 },
-                GameEvent::NextGameState { moves, wtime, btime, .. } => {
-                    self.time_ctrl = if matches!(self.lichess.color, Color::White) {
+                GameEvent::NextGameState { new_move, wtime, btime, .. } => {
+                    self.time_ctrl = if matches!(self.color, Color::White) {
                         wtime
                     } else {
                         btime
                     };
                     self.time_ref = Instant::now();
 
-                    let m = move_from_uci(moves.split_whitespace().last().unwrap());
-                    self.lichess.board = self.lichess.board.make_move_new(m);
-                    self.moves.push(m);
+                    self.board = self.board.make_move_new(new_move);
+                    self.moves.push(new_move);
 
                     self.play();
                 },
@@ -110,7 +131,7 @@ impl Game {
             }
         }
 
-        info!("no more events (id: `{}`)", self.lichess.id);
+        info!("no more events (id: `{}`)", self.id);
     }
 
     pub fn reserve_time(&mut self) {

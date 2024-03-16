@@ -3,15 +3,18 @@ name = "chessbot"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["uci"]
+lichess = ["dep:reqwest", "dep:futures-util", "dep:bytes", "dep:json"]
+uci = []
 
 [dependencies]
-reqwest = { version = "0.11.24", features = ["stream"] }
+reqwest = { version = "0.11.24", features = ["stream"], optional = true }
 tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
-futures-util = "0.3.30"
-bytes = "1.0"
+futures-util = { version = "0.3.30", optional = true }
+bytes = { version = "1.0", optional = true }
+json  = { version = "0.12.4", optional = true }
 chess = "3.2.0"
-json = "0.12.4"
 rayon = "1.9.0"
 murmur3 = "0.5.2"
 

@@ -16,7 +16,12 @@
 #[macro_use]
 mod log;
 mod bot;
+
+#[cfg(feature = "lichess")]
 mod lichess;
+
+#[cfg(feature = "uci")]
+mod uci;
 
 #[tokio::main]
 async fn main() {
@@ -25,5 +30,12 @@ async fn main() {
         .thread_name(|i| format!("rayon_pool_thread_{i}"))
         .build_global().unwrap();
 
+    #[cfg(feature = "lichess")]
     lichess::LichessClient::new().await.start().await;
+
+    #[cfg(feature = "uci")]
+    uci::UciClient::new().start().await;
 }
+
+#[cfg(all(feature = "lichess", feature = "uci"))]
+compile_error!("conflicting features");
