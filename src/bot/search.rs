@@ -43,6 +43,7 @@ impl super::Game {
                     SEARCH_EXTENSION_LIMIT,
                     MIN_EVAL,
                     -max_eval.load(Ordering::Relaxed),
+                    true,
                 );
 
                 if self.times_up() {
@@ -57,6 +58,7 @@ impl super::Game {
                         SEARCH_EXTENSION_LIMIT,
                         MIN_EVAL,
                         -eval,
+                        true,
                     );
 
                     if !self.times_up() {
@@ -100,6 +102,7 @@ impl super::Game {
         ext_depth: usize,
         mut alpha: i32,
         beta: i32,
+        is_pv: bool
     ) -> i32 {
         if matches!(current.status(), BoardStatus::Checkmate) {
             return MIN_EVAL;
@@ -108,7 +111,7 @@ impl super::Game {
         }
 
         if let Some(t_e) = self.trans_table.get(current.get_hash()) {
-            if t_e.depth >= depth {
+            if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= depth {
                 return t_e.eval;
             }
         }
@@ -155,7 +158,8 @@ impl super::Game {
                             depth.max(0) as usize,
                             ext_depth - ext,
                             -beta,
-                            -alpha
+                            -alpha,
+                            true,
                         )
                     } else {
                         let eval = -self.search_alpha_beta(
@@ -164,17 +168,19 @@ impl super::Game {
                             depth.max(0) as usize,
                             ext_depth - ext,
                             -alpha - 1,
-                            -alpha
+                            -alpha,
+                            false
                         );
 
-                        if eval > alpha && eval < beta {
+                        if alpha < eval && eval < beta {
                             -self.search_alpha_beta(
                                 after,
                                 moves,
                                 depth.max(0) as usize,
                                 ext_depth - ext,
                                 -beta,
-                                -alpha
+                                -alpha,
+                                true,
                             )
                         } else {
                             eval
