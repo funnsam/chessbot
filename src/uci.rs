@@ -43,7 +43,7 @@ impl UciClient {
                         game = Some(event_t);
 
                         let moves_len = moves.len();
-                        new_game.moves = moves.into_iter().take(moves_len - 1).collect();
+                        new_game.moves = moves.into_iter().take(moves_len.saturating_sub(1)).collect();
 
                         tokio::spawn(async move {
                             new_game.run(event_r);
