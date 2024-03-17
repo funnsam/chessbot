@@ -133,7 +133,7 @@ impl super::Game {
             }
 
             let mc = moves.len();
-            let eval = if !(
+            let eval = if mc >= 11 && !(
                 eq!(moves.get(mc - 11), moves.get(mc - 7), moves.get(mc - 3)) && // chain of 3 fold
                 eq!(moves.get(mc - 10), moves.get(mc - 6), moves.get(mc - 2)) && // detection
                 eq!(moves.get(mc - 9), moves.get(mc - 5), moves.get(mc - 1)) &&
