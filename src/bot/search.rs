@@ -164,7 +164,7 @@ impl super::Game {
                             ext_depth - ext,
                             -beta,
                             -alpha,
-                            true,
+                            is_pv,
                         )
                     } else {
                         let eval = -self.search_alpha_beta(
@@ -194,7 +194,7 @@ impl super::Game {
                 };
 
                 let mut next_depth = depth as isize - 1 + ext as isize;
-                // next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
+                next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
                 let mut eval = do_pvs(next_depth);
 
@@ -202,13 +202,13 @@ impl super::Game {
                     return 0;
                 }
 
-                // if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
-                //     let new_eval = do_pvs(next_depth + 1);
+                if eval > max_eval && i >= REDUCED_SEARCH_DEPTH {
+                    let new_eval = do_pvs(next_depth + 1);
 
-                //     if !self.times_up() {
-                //         eval = new_eval;
-                //     }
-                // }
+                    if !self.times_up() {
+                        eval = new_eval;
+                    }
+                }
 
                 moves.pop();
 
