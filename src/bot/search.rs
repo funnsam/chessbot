@@ -130,6 +130,7 @@ impl super::Game {
         }
 
         let mut max_eval = MIN_EVAL;
+        let mut alpha_raised = false;
 
         for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
             // made for less pain
@@ -156,7 +157,7 @@ impl super::Game {
                 moves.push(m);
 
                 let mut do_pvs = |depth: isize| {
-                    if i == 0 {
+                    if !alpha_raised {
                         -self.search_alpha_beta(
                             after,
                             moves,
@@ -237,6 +238,7 @@ impl super::Game {
 
                 if eval > alpha {
                     alpha = eval;
+                    alpha_raised = true;
                 }
             }
         }
