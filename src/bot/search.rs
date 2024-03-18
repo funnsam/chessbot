@@ -42,7 +42,8 @@ impl super::Game {
                     depth,
                     SEARCH_EXTENSION_LIMIT,
                     MIN_EVAL,
-                    -max_eval.load(Ordering::Relaxed),
+                    MAX_EVAL,
+                    // -max_eval.load(Ordering::Relaxed),
                 );
 
                 if self.times_up() {
@@ -73,7 +74,9 @@ impl super::Game {
 
             moves.sort_by_key(|a| -a.1);
 
-            info!("depth {} searched in {:.2}s", i, start.elapsed().as_secs_f32());
+            let elapsed = start.elapsed().as_secs_f32();
+            let nodes = self.searched.swap(0, Ordering::Relaxed);
+            info!("depth {} searched in {:.2}s (nodes: {}, MN/s: {:.2})", i, elapsed, nodes, (nodes as f32 / 1_000_000.0) / elapsed);
 
             if moves.iter().any(|a| a.1 == MAX_EVAL) {
                 info!("found checkmate");
@@ -101,6 +104,8 @@ impl super::Game {
         mut alpha: i32,
         beta: i32,
     ) -> i32 {
+        self.searched.fetch_add(1, Ordering::Relaxed);
+
         if matches!(current.status(), BoardStatus::Checkmate) {
             return MIN_EVAL;
         } else if matches!(current.status(), BoardStatus::Stalemate) {
@@ -139,7 +144,7 @@ impl super::Game {
             }
 
             let mc = moves.len();
-            let eval = if mc >= 11 && !(
+            let eval = if mc < 11 || !(
                 eq!(moves.get(mc - 11), moves.get(mc - 7), moves.get(mc - 3)) && // chain of 3 fold
                 eq!(moves.get(mc - 10), moves.get(mc - 6), moves.get(mc - 2)) && // detection
                 eq!(moves.get(mc - 9), moves.get(mc - 5), moves.get(mc - 1)) &&
