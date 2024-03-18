@@ -156,29 +156,29 @@ fn parse_command<'a, T: Iterator<Item = &'a str>>(mut token: T) -> Option<UciCom
             })
         },
         Some("go") => {
-            let mut wtime = None;
-            let mut btime = None;
-            let mut winc = None;
-            let mut binc = None;
+            let mut wtime = u32::MAX as usize;
+            let mut btime = u32::MAX as usize;
+            let mut winc = 0;
+            let mut binc = 0;
 
             while let Some(t) = token.next() {
                 match t {
-                    "wtime" => wtime = Some(token.next()?.parse().ok()?),
-                    "btime" => btime = Some(token.next()?.parse().ok()?),
-                    "winc" => winc = Some(token.next()?.parse().ok()?),
-                    "binc" => binc = Some(token.next()?.parse().ok()?),
+                    "wtime" => wtime = token.next()?.parse().ok()?,
+                    "btime" => btime = token.next()?.parse().ok()?,
+                    "winc" => winc = token.next()?.parse().ok()?,
+                    "binc" => binc = token.next()?.parse().ok()?,
                     _ => {},
                 }
             }
 
             Some(UciCommand::Go {
                 wtime: TimeControl {
-                    time_left: wtime?,
-                    time_incr: winc?,
+                    time_left: wtime,
+                    time_incr: winc,
                 },
                 btime: TimeControl {
-                    time_left: btime?,
-                    time_incr: binc?,
+                    time_left: btime,
+                    time_incr: binc,
                 },
             })
         },

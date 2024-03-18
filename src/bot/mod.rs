@@ -3,7 +3,7 @@ mod search;
 pub mod trans_table;
 pub mod config;
 
-use std::sync::mpsc::*;
+use std::sync::{atomic::*, mpsc::*};
 use chess::*;
 use std::time::*;
 
@@ -22,6 +22,8 @@ pub struct Game {
     pub time_ctrl: TimeControl,
     pub time_ref: Instant,
     pub time_usable: Duration,
+
+    pub searched: AtomicUsize,
 }
 
 #[derive(Debug)]
@@ -67,6 +69,8 @@ impl Game {
             time_ctrl: TimeControl::default(),
             time_ref: std::time::Instant::now(),
             time_usable: std::time::Duration::from_secs(0),
+
+            searched: AtomicUsize::new(0),
         }
     }
 
@@ -88,6 +92,7 @@ impl Game {
         );
 
         if self.board.side_to_move() == self.color {
+            self.time_ref = Instant::now();
             self.age += 1;
             info!("start search");
             self.reserve_time();
@@ -110,7 +115,6 @@ impl Game {
                     } else {
                         btime
                     };
-                    self.time_ref = Instant::now();
 
                     self.play();
                 },
@@ -120,7 +124,6 @@ impl Game {
                     } else {
                         btime
                     };
-                    self.time_ref = Instant::now();
 
                     self.board = self.board.make_move_new(new_move);
                     self.moves.push(new_move);
