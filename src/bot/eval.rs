@@ -1,8 +1,18 @@
 use chess::*;
 
 pub fn evaluate(board: &Board) -> i32 {
-    let white_eval = eval_single(board, Color::White);
-    let black_eval = eval_single(board, Color::Black);
+    let piece_value = if board.pieces(Piece::Queen).popcnt() == 0 {
+        PIECE_VALUE_END
+    } else if
+        (board.color_combined(Color::White) & board.pieces(Piece::Queen)).popcnt() !=
+        (board.color_combined(Color::Black) & board.pieces(Piece::Queen)).popcnt() {
+        PIECE_VALUE_THR
+    } else {
+        PIECE_VALUE_MID
+    };
+
+    let white_eval = eval_single(board, Color::White, &piece_value);
+    let black_eval = eval_single(board, Color::Black, &piece_value);
 
     let perspective = if matches!(board.side_to_move(), Color::White) { 1 } else { -1 };
 
@@ -10,37 +20,37 @@ pub fn evaluate(board: &Board) -> i32 {
 }
 
 #[inline(always)]
-fn eval_single(board: &Board, color: Color) -> i32 {
+fn eval_single(board: &Board, color: Color, piece_value: &[i32; 7]) -> i32 {
     let mut eval = 0;
 
-    let oppo_end_weight = end_game_weight(board, !color);
+    let oppo_end_weight = end_game_weight(board, !color, piece_value);
 
-    eval += piece_value(board, color);
+    eval += total_piece_value(board, color, piece_value);
     eval += piece_square_table(board, color, oppo_end_weight);
 
     // bishop pair bonus
     if (board.color_combined(color) & board.pieces(Piece::Bishop)).popcnt() == 2 {
-        eval += PIECE_VALUE[0] / 2;
+        eval += piece_value[6];
     }
 
     eval
 }
 
-pub fn piece_value(board: &Board, color: Color) -> i32 {
+pub fn total_piece_value(board: &Board, color: Color, piece_value: &[i32; 7]) -> i32 {
     let color = board.color_combined(color);
-    (color & board.pieces(Piece::Pawn)).popcnt() as i32 * PIECE_VALUE[0]
-        + (color & board.pieces(Piece::Knight)).popcnt() as i32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * PIECE_VALUE[4]
+    (color & board.pieces(Piece::Pawn)).popcnt() as i32 * piece_value[0]
+        + (color & board.pieces(Piece::Knight)).popcnt() as i32 * piece_value[1]
+        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * piece_value[2]
+        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * piece_value[3]
+        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * piece_value[4]
 }
 
-pub fn end_game_weight(board: &Board, color: Color) -> f32 {
+pub fn end_game_weight(board: &Board, color: Color, piece_value: &[i32; 7]) -> f32 {
     let color = board.color_combined(color);
-    let value = (color & board.pieces(Piece::Knight)).popcnt() as i32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * PIECE_VALUE[4];
+    let value = (color & board.pieces(Piece::Knight)).popcnt() as i32 * piece_value[1]
+        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * piece_value[2]
+        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * piece_value[3]
+        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * piece_value[4];
 
     // value & formula from coding adventures
     1.0 - (value as f32 / 1650.0).min(1.0)
@@ -72,8 +82,11 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
     value as i32
 }
 
-// bishop value will be +25 centipawn if in pair
-pub const PIECE_VALUE: [i32; 6] = [100, 320, 305, 500, 900, 20000];
+// https://en.wikipedia.org/wiki/Chess_piece_relative_value#Larry_Kaufman's_2021_system
+//                                     P    N    B    R    Q    K  BB
+pub const PIECE_VALUE_MID: [i32; 7] = [ 80, 320, 330, 460,   0, 0, 30];
+pub const PIECE_VALUE_THR: [i32; 7] = [ 90, 320, 330, 485, 905, 0, 40];
+pub const PIECE_VALUE_END: [i32; 7] = [100, 320, 330, 515,   0, 0, 50];
 
 pub const MIN_EVAL: i32 = i32::MIN / 2;
 pub const MAX_EVAL: i32 = -MIN_EVAL;
