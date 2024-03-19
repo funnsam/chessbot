@@ -178,7 +178,7 @@ impl super::Game {
                             false
                         );
 
-                        if alpha < eval && eval < beta {
+                        if max_eval < eval && eval < beta {
                             -self.search_alpha_beta(
                                 after,
                                 moves,
