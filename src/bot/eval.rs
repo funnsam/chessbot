@@ -73,7 +73,7 @@ pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
 }
 
 // bishop value will be +25 centipawn if in pair
-pub const PIECE_VALUE: [i32; 6] = [100, 320, 305, 500, 900, 20000];
+pub const PIECE_VALUE: [i32; 6] = [100, 305, 333, 563, 950, 20000];
 
 pub const MIN_EVAL: i32 = i32::MIN / 2;
 pub const MAX_EVAL: i32 = -MIN_EVAL;
