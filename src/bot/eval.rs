@@ -1,8 +1,9 @@
 use chess::*;
+use super::*;
 
-pub fn evaluate(board: &Board) -> i32 {
-    let white_eval = eval_single(board, Color::White);
-    let black_eval = eval_single(board, Color::Black);
+pub fn evaluate(train_data: &TrainData, board: &Board) -> i32 {
+    let white_eval = eval_single(train_data, board, Color::White);
+    let black_eval = eval_single(train_data, board, Color::Black);
 
     let perspective = if matches!(board.side_to_move(), Color::White) { 1 } else { -1 };
 
@@ -10,13 +11,13 @@ pub fn evaluate(board: &Board) -> i32 {
 }
 
 #[inline(always)]
-fn eval_single(board: &Board, color: Color) -> i32 {
+fn eval_single(train_data: &TrainData, board: &Board, color: Color) -> i32 {
     let mut eval = 0;
 
-    let oppo_end_weight = end_game_weight(board, !color);
+    let oppo_end_weight = end_game_weight(train_data, board, !color);
 
-    eval += piece_value(board, color);
-    eval += piece_square_table(board, color, oppo_end_weight);
+    eval += piece_value(train_data, board, color);
+    eval += piece_square_table(train_data, board, color, oppo_end_weight);
 
     // bishop pair bonus
     if (board.color_combined(color) & board.pieces(Piece::Bishop)).popcnt() == 2 {
@@ -26,27 +27,27 @@ fn eval_single(board: &Board, color: Color) -> i32 {
     eval
 }
 
-pub fn piece_value(board: &Board, color: Color) -> i32 {
+pub fn piece_value(train_data: &TrainData, board: &Board, color: Color) -> i32 {
     let color = board.color_combined(color);
-    (color & board.pieces(Piece::Pawn)).popcnt() as i32 * PIECE_VALUE[0]
-        + (color & board.pieces(Piece::Knight)).popcnt() as i32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * PIECE_VALUE[4]
+    (color & board.pieces(Piece::Pawn)).popcnt() as i32 * 100
+        + (color & board.pieces(Piece::Knight)).popcnt() as i32 * train_data.piece_value[0]
+        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * train_data.piece_value[1]
+        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * train_data.piece_value[2]
+        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * train_data.piece_value[3]
 }
 
-pub fn end_game_weight(board: &Board, color: Color) -> f32 {
+pub fn end_game_weight(train_data: &TrainData, board: &Board, color: Color) -> f32 {
     let color = board.color_combined(color);
-    let value = (color & board.pieces(Piece::Knight)).popcnt() as i32 * PIECE_VALUE[1]
-        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * PIECE_VALUE[2]
-        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * PIECE_VALUE[3]
-        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * PIECE_VALUE[4];
+    let value = (color & board.pieces(Piece::Knight)).popcnt() as i32 * train_data.piece_value[0]
+        + (color & board.pieces(Piece::Bishop)).popcnt() as i32 * train_data.piece_value[1]
+        + (color & board.pieces(Piece::Rook)).popcnt() as i32 * train_data.piece_value[2]
+        + (color & board.pieces(Piece::Queen)).popcnt() as i32 * train_data.piece_value[3];
 
     // value & formula from coding adventures
-    1.0 - (value as f32 / 1650.0).min(1.0)
+    1.0 - (value as f32 / ((train_data.piece_value[2] << 1) + train_data.piece_value[1] + train_data.piece_value[0]) as f32).min(1.0)
 }
 
-pub fn piece_square_table(board: &Board, color: Color, end_weight: f32) -> i32 {
+pub fn piece_square_table(train_data: &TrainData, board: &Board, color: Color, end_weight: f32) -> i32 {
     let mut value = 0.0;
 
     let our_pieces = board.color_combined(color);

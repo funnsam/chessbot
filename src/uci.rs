@@ -1,6 +1,6 @@
 use std::io::{self, BufRead as _};
 use std::str::FromStr;
-use std::sync::mpsc::*;
+use std::sync::{*, mpsc::*};
 use chess::{Square, Board, ChessMove, Piece};
 use super::bot::*;
 
@@ -17,6 +17,8 @@ impl UciClient {
 
         let mut game = None;
         let mut last_move = None;
+
+        let mut train_data = Arc::new(TrainData::default());
 
         while let Some(Ok(l)) = lines.next() {
             info!("uci: `{}`", l);
@@ -45,8 +47,9 @@ impl UciClient {
                         let moves_len = moves.len();
                         new_game.moves = moves.into_iter().take(moves_len.saturating_sub(1)).collect();
 
+                        let train_data = Arc::clone(&train_data);
                         tokio::spawn(async move {
-                            new_game.run(event_r);
+                            new_game.run(event_r, train_data);
                         });
 
                         tokio::spawn(async move {
@@ -71,6 +74,8 @@ impl UciClient {
                         });
                     }
                 },
+                Some(UciCommand::SetTrainData { data }) => train_data = data,
+                Some(UciCommand::ExportTrainData) => train_data.write_to_disk_as_f32(),
                 None => {
                     warn!("got unknown uci command");
                 },
@@ -79,7 +84,6 @@ impl UciClient {
     }
 }
 
-#[derive(Debug)]
 enum UciCommand {
     Uci,
     // Debug(bool),
@@ -94,6 +98,10 @@ enum UciCommand {
         btime: crate::bot::TimeControl,
     },
     Stop,
+    SetTrainData {
+        data: Arc<TrainData>,
+    },
+    ExportTrainData,
 }
 
 fn move_from_uci(m: &str) -> ChessMove {
@@ -183,6 +191,18 @@ fn parse_command<'a, T: Iterator<Item = &'a str>>(mut token: T) -> Option<UciCom
             })
         },
         Some("stop") => Some(UciCommand::Stop),
+        Some("settraindata") => {
+            let mut data = Vec::new();
+
+            while let Some(Ok(v)) = token.next().map(|a| a.parse()) {
+                data.push(v);
+            }
+
+            Some(UciCommand::SetTrainData {
+                data: Arc::new(TrainData::from_values(&data)),
+            })
+        },
+        Some("exporttraindata") => Some(UciCommand::ExportTrainData),
         Some(_) => parse_command(token),
         None => None,
     }

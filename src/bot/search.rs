@@ -1,17 +1,16 @@
 use chess::*;
-use super::config::*;
-use super::eval::*;
+use super::{*, config::*, eval::*};
 use rayon::prelude::*;
 use std::sync::atomic::*;
 
 impl super::Game {
-    pub fn search(&mut self) -> (ChessMove, i32) {
+    pub fn search(&mut self, train_data: &TrainData) -> (ChessMove, i32) {
         let gen = MoveGen::new_legal(&self.board);
         let mut moves = Vec::with_capacity(gen.len());
 
         for m in gen {
             let board = self.board.make_move_new(m);
-            let eval = super::eval::evaluate(&board);
+            let eval = super::eval::evaluate(&train_data, &board);
             moves.push((m, eval));
         }
 
@@ -37,6 +36,7 @@ impl super::Game {
                 moves.push(*m);
 
                 let mut eval = -self.search_alpha_beta(
+                    train_data,
                     board,
                     &mut moves,
                     depth,
@@ -53,6 +53,7 @@ impl super::Game {
 
                 if j >= REDUCED_SEARCH_DEPTH && eval > max_eval.load(Ordering::Relaxed) {
                     let new_eval = -self.search_alpha_beta(
+                        train_data,
                         board,
                         &mut moves,
                         depth + 1,
@@ -99,6 +100,7 @@ impl super::Game {
 
     fn search_alpha_beta(
         &self,
+        train_data: &TrainData,
         current: Board,
         moves: &mut Vec<ChessMove>, // reuse the same vec to avoid alloc
         depth: usize,
@@ -126,13 +128,13 @@ impl super::Game {
         }
 
         if depth == 0 {
-            return Self::quiescene_search(current, alpha, beta);
+            return Self::quiescene_search(train_data, current, alpha, beta);
         }
 
         let mut max_eval = MIN_EVAL;
         let mut alpha_raised = false;
 
-        for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
+        for (i, m) in self.move_in_order(train_data, &current).into_iter().enumerate() {
             // made for less pain
             macro_rules! eq {
                 ($a: expr, $b: expr) => { $a == $b };
@@ -159,6 +161,7 @@ impl super::Game {
                 let mut do_pvs = |depth: isize| {
                     if !alpha_raised {
                         -self.search_alpha_beta(
+                            train_data,
                             after,
                             moves,
                             depth.max(0) as usize,
@@ -169,6 +172,7 @@ impl super::Game {
                         )
                     } else {
                         let eval = -self.search_alpha_beta(
+                            train_data,
                             after,
                             moves,
                             depth.max(0) as usize,
@@ -180,6 +184,7 @@ impl super::Game {
 
                         if max_eval < eval && eval < beta {
                             -self.search_alpha_beta(
+                                train_data,
                                 after,
                                 moves,
                                 depth.max(0) as usize,
@@ -247,6 +252,7 @@ impl super::Game {
     }
 
     pub fn quiescene_search(
+        train_data: &TrainData,
         current: Board,
         mut alpha: i32,
         beta: i32,
@@ -257,7 +263,7 @@ impl super::Game {
             return 0;
         }
 
-        let eval = evaluate(&current);
+        let eval = evaluate(train_data, &current);
         let mut max_eval = eval;
 
         if eval >= beta {
@@ -272,7 +278,7 @@ impl super::Game {
 
         for m in movegen {
             let board = current.make_move_new(m);
-            let eval = -Self::quiescene_search(board, -beta, -alpha);
+            let eval = -Self::quiescene_search(train_data, board, -beta, -alpha);
 
             if eval >= beta {
                 return eval;
@@ -288,7 +294,7 @@ impl super::Game {
         max_eval
     }
 
-    fn move_in_order(&self, board: &Board) -> Vec<ChessMove> {
+    fn move_in_order(&self, train_data: &TrainData, board: &Board) -> Vec<ChessMove> {
         let gen = MoveGen::new_legal(board);
         let mut buf = Vec::with_capacity(gen.len());
 
@@ -297,7 +303,7 @@ impl super::Game {
         buf.sort_by_cached_key(|a| {
             let a = board.make_move_new(*a);
 
-            self.trans_table.get(a.get_hash()).map_or_else(|| evaluate(&a), |a| a.eval)
+            self.trans_table.get(a.get_hash()).map_or_else(|| evaluate(train_data, &a), |a| a.eval)
         });
 
         buf

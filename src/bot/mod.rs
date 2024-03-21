@@ -3,7 +3,7 @@ mod search;
 pub mod trans_table;
 pub mod config;
 
-use std::sync::{atomic::*, mpsc::*};
+use std::sync::{*, atomic::*, mpsc::*};
 use chess::*;
 use std::time::*;
 
@@ -74,8 +74,9 @@ impl Game {
         }
     }
 
-    pub fn play(&mut self) {
+    pub fn play(&mut self, train_data: Arc<TrainData>) {
         let eval = Self::quiescene_search(
+            &train_data,
             self.board,
             eval::MIN_EVAL,
             eval::MAX_EVAL
@@ -96,7 +97,7 @@ impl Game {
             self.age += 1;
             info!("start search");
             self.reserve_time();
-            let (next, eval) = self.search();
+            let (next, eval) = self.search(&train_data);
             info!("next move: {} (eval: {})", next, eval);
             self.outgoing_moves.send(next).unwrap();
 
@@ -104,7 +105,7 @@ impl Game {
         }
     }
 
-    pub fn run(mut self, events: Receiver<GameEvent>) {
+    pub fn run(mut self, events: Receiver<GameEvent>, train_data: Arc<TrainData>) {
         while let Ok(event) = events.recv() {
             match event {
                 GameEvent::FullGameState { moves, wtime, btime, .. } => {
@@ -116,7 +117,7 @@ impl Game {
                         btime
                     };
 
-                    self.play();
+                    self.play(Arc::clone(&train_data));
                 },
                 GameEvent::NextGameState { new_move, wtime, btime, .. } => {
                     self.time_ctrl = if matches!(self.color, Color::White) {
@@ -128,7 +129,7 @@ impl Game {
                     self.board = self.board.make_move_new(new_move);
                     self.moves.push(new_move);
 
-                    self.play();
+                    self.play(Arc::clone(&train_data));
                 },
                 _ => {},
             }
@@ -158,24 +159,32 @@ impl Game {
     }
 }
 
-fn move_from_uci(m: &str) -> ChessMove {
-    let src = &m[0..2];
-    let src = unsafe {
-        Square::new(((src.as_bytes()[1] - b'1') << 3) + (src.as_bytes()[0] - b'a'))
-    };
+pub struct TrainData {
+    piece_value: [i32; 5], // pawn is locked to 100 centipawn
+}
 
-    let dst = &m[2..4];
-    let dst = unsafe {
-        Square::new(((dst.as_bytes()[1] - b'1') << 3) + (dst.as_bytes()[0] - b'a'))
-    };
+impl TrainData {
+    pub fn from_values(values: &[i32]) -> Self {
+        Self {
+            piece_value: values[0..5].try_into().unwrap(),
+        }
+    }
 
-    let piece = m.as_bytes().get(4).and_then(|p| match p {
-        b'n' => Some(Piece::Knight),
-        b'b' => Some(Piece::Bishop),
-        b'q' => Some(Piece::Queen),
-        b'r' => Some(Piece::Rook),
-        _ => None,
-    });
+    pub fn write_to_disk_as_f32(&self) {
+        let mut buf = Vec::with_capacity(core::mem::size_of::<Self>());
 
-    ChessMove::new(src, dst, piece)
+        for i in self.piece_value.iter() {
+            buf.extend(f32::to_le_bytes(*i as f32));
+        }
+
+        std::fs::write("train_data.flt", buf).unwrap();
+    }
+}
+
+impl Default for TrainData {
+    fn default() -> Self {
+        Self {
+            piece_value: [305, 333, 563, 950, 20000],
+        }
+    }
 }
