@@ -4,6 +4,9 @@ use super::eval::*;
 use rayon::prelude::*;
 use std::sync::atomic::*;
 
+const NON_ZERO_WINDOW: usize = 1 << 31;
+const PV_NODE: usize = 1 << 30;
+
 macro_rules! eq {
     ($a: expr, $b: expr) => { $a == $b };
     ($a: expr, $b: expr, $($rest: tt)+) => {
@@ -52,6 +55,7 @@ impl super::Game {
                     MAX_EVAL,
                     // -max_eval.load(Ordering::Relaxed),
                     true,
+                    false,
                 );
 
                 if self.times_up() {
@@ -67,6 +71,7 @@ impl super::Game {
                         MIN_EVAL,
                         -eval,
                         true,
+                        false,
                     );
 
                     if !self.times_up() {
@@ -112,7 +117,8 @@ impl super::Game {
         ext_depth: usize,
         mut alpha: i32,
         beta: i32,
-        is_pv: bool
+        is_pv: bool,
+        zero_window: bool,
     ) -> i32 {
         self.searched.fetch_add(1, Ordering::Relaxed);
 
@@ -122,8 +128,10 @@ impl super::Game {
             return 0;
         }
 
+        let tt_depth = depth + NON_ZERO_WINDOW * !zero_window as usize;
+
         if let Some(t_e) = self.trans_table.get(current.get_hash()) {
-            if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= depth {
+            if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= tt_depth {
                 return t_e.eval;
             }
         }
@@ -139,7 +147,7 @@ impl super::Game {
         // null move pruning
         if let Some(board) = current.null_move() {
             // let eval = self.search_alpha_beta(board, moves, depth.saturating_sub(4), ext_depth, alpha, beta, false);
-            let eval = -self.zero_window_search(board, moves, depth.saturating_sub(4), beta);
+            let eval = -self.alpha_beta_search(board, moves, depth.saturating_sub(4), ext_depth, beta - 1, beta, false, true);
 
             if self.times_up() {
                 return 0;
@@ -150,7 +158,7 @@ impl super::Game {
             }
         }
 
-        let mut max_eval = MIN_EVAL;
+        let mut max_eval = if zero_window { alpha } else { MIN_EVAL };
         let mut alpha_raised = false;
 
         for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
@@ -179,13 +187,18 @@ impl super::Game {
                             -beta,
                             -alpha,
                             is_pv,
+                            false,
                         )
                     } else {
-                        let eval = -self.zero_window_search(
+                        let eval = -self.alpha_beta_search(
                             after,
                             moves,
                             depth.max(0) as usize,
+                            ext_depth - ext,
+                            -alpha - 1,
                             -alpha,
+                            false,
+                            true,
                         );
 
                         if max_eval < eval && eval < beta {
@@ -197,6 +210,7 @@ impl super::Game {
                                 -beta,
                                 -alpha,
                                 true,
+                                false,
                             )
                         } else {
                             eval
@@ -230,7 +244,7 @@ impl super::Game {
 
                 self.trans_table.insert(current.get_hash(),
                     super::trans_table::TransTableEntry {
-                        depth,
+                        depth: tt_depth,
                         eval,
                         age: self.age,
                     }
@@ -243,7 +257,7 @@ impl super::Game {
 
             if eval >= beta {
                 return eval;
-            } else if eval > max_eval {
+            } else if !zero_window && eval > max_eval {
                 max_eval = eval;
 
                 if eval > alpha {
@@ -298,61 +312,61 @@ impl super::Game {
         max_eval
     }
 
-    fn zero_window_search(&self, current: Board, moves: &mut Vec<ChessMove>, depth: usize, beta: i32) -> i32 {
-        self.searched.fetch_add(1, Ordering::Relaxed);
+    // fn zero_window_search(&self, current: Board, moves: &mut Vec<ChessMove>, depth: usize, beta: i32) -> i32 {
+    //     self.searched.fetch_add(1, Ordering::Relaxed);
 
-        if matches!(current.status(), BoardStatus::Checkmate) {
-            return MIN_EVAL;
-        } else if matches!(current.status(), BoardStatus::Stalemate) {
-            return 0;
-        }
+    //     if matches!(current.status(), BoardStatus::Checkmate) {
+    //         return MIN_EVAL;
+    //     } else if matches!(current.status(), BoardStatus::Stalemate) {
+    //         return 0;
+    //     }
 
-        if let Some(t_e) = self.trans_table.get(current.get_hash()) {
-            if t_e.depth >= depth {
-                return t_e.eval;
-            }
-        }
+    //     if let Some(t_e) = self.trans_table.get(current.get_hash()) {
+    //         if t_e.depth >= depth {
+    //             return t_e.eval;
+    //         }
+    //     }
 
-        if depth == 0 {
-            return Self::quiescene_search(current, beta - 1, beta);
-        }
+    //     if depth == 0 {
+    //         return Self::quiescene_search(current, beta - 1, beta);
+    //     }
 
-        if self.times_up() {
-            return 0;
-        }
+    //     if self.times_up() {
+    //         return 0;
+    //     }
 
-        for (i, m) in MoveGen::new_legal(&current).enumerate() {
-            let mc = moves.len();
-            let eval = if mc < 11 || !(
-                eq!(moves.get(mc - 11), moves.get(mc - 7), moves.get(mc - 3)) && // chain of 3 fold
-                eq!(moves.get(mc - 10), moves.get(mc - 6), moves.get(mc - 2)) && // detection
-                eq!(moves.get(mc - 9), moves.get(mc - 5), moves.get(mc - 1)) &&
-                eq!(moves.get(mc - 8), moves.get(mc - 4), Some(&m))
-            ) {
-                let board = current.make_move_new(m);
+    //     for (i, m) in MoveGen::new_legal(&current).enumerate() {
+    //         let mc = moves.len();
+    //         let eval = if mc < 11 || !(
+    //             eq!(moves.get(mc - 11), moves.get(mc - 7), moves.get(mc - 3)) && // chain of 3 fold
+    //             eq!(moves.get(mc - 10), moves.get(mc - 6), moves.get(mc - 2)) && // detection
+    //             eq!(moves.get(mc - 9), moves.get(mc - 5), moves.get(mc - 1)) &&
+    //             eq!(moves.get(mc - 8), moves.get(mc - 4), Some(&m))
+    //         ) {
+    //             let board = current.make_move_new(m);
 
-                let mut next_depth = depth as isize - 1;
-                next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
+    //             let mut next_depth = depth as isize - 1;
+    //             next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
-                moves.push(m);
-                let eval = -self.zero_window_search(board, moves, next_depth.max(0) as usize, 1 - beta);
-                moves.pop();
+    //             moves.push(m);
+    //             let eval = -self.zero_window_search(board, moves, next_depth.max(0) as usize, 1 - beta);
+    //             moves.pop();
 
-                if self.times_up() {
-                    return 0;
-                }
-                eval
-            } else {
-                0
-            };
+    //             if self.times_up() {
+    //                 return 0;
+    //             }
+    //             eval
+    //         } else {
+    //             0
+    //         };
 
-            if eval >= beta {
-                return eval;
-            }
-        }
+    //         if eval >= beta {
+    //             return eval;
+    //         }
+    //     }
 
-        return beta - 1;
-    }
+    //     return beta - 1;
+    // }
 
     fn move_in_order(&self, board: &Board) -> Vec<ChessMove> {
         let gen = MoveGen::new_legal(board);
