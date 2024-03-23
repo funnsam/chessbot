@@ -7,7 +7,7 @@ use std::sync::atomic::*;
 const NON_ZERO_WINDOW: usize = 1 << 31;
 const PV_NODE: usize = 1 << 30;
 
-const FUTILITY_MARGIN: i32 = 150;
+const FUTILITY_MARGIN: &[i32] = &[0, 200, 300, 500];
 
 macro_rules! eq {
     ($a: expr, $b: expr) => { $a == $b };
@@ -165,7 +165,7 @@ impl super::Game {
             }
         }
 
-        let futility_prune = !is_pv && !zero_window && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && (evaluate(&current) + FUTILITY_MARGIN) <= alpha;
+        let futility_prune = !is_pv && !zero_window && depth < FUTILITY_MARGIN.len() && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && (evaluate(&current) + FUTILITY_MARGIN[depth]) <= alpha;
 
         let mut max_eval = if zero_window { alpha } else { MIN_EVAL };
         let mut alpha_raised = false;
@@ -189,7 +189,7 @@ impl super::Game {
                 next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
                 // futility pruning
-                if futility_prune && next_depth == 1 && after.checkers().0 == 0 && current.piece_on(m.get_dest()).is_none() {
+                if futility_prune && ext == 0 && after.checkers().0 == 0 && current.piece_on(m.get_dest()).is_none() {
                     continue
                     // let eval = evaluate(&after);
 
