@@ -187,7 +187,7 @@ impl super::Game {
                 next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
                 // futility pruning
-                if next_depth == 1 && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && after.checkers().0 == 0 && MoveGen::new_legal(&after).len() != 0 {
+                if !is_pv && !zero_window && next_depth == 1 && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && after.checkers().0 == 0 && MoveGen::new_legal(&after).len() != 0 {
                     let eval = evaluate(&after);
 
                     if (eval + current.piece_on(m.get_dest()).map_or(0, |a| PIECE_VALUE[a.to_index()]) + FUTILITY_MARGIN) <= max_eval {
