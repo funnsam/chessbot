@@ -165,6 +165,8 @@ impl super::Game {
             }
         }
 
+        let futility_prune = !is_pv && !zero_window && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && (evaluate(&current) + FUTILITY_MARGIN) <= alpha;
+
         let mut max_eval = if zero_window { alpha } else { MIN_EVAL };
         let mut alpha_raised = false;
 
@@ -187,12 +189,13 @@ impl super::Game {
                 next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
                 // futility pruning
-                if !is_pv && !zero_window && next_depth == 1 && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && after.checkers().0 == 0 && MoveGen::new_legal(&after).len() != 0 {
-                    let eval = evaluate(&after);
+                if futility_prune && next_depth == 1 && after.checkers().0 == 0 && current.piece_on(m.get_dest()).is_none() {
+                    continue
+                    // let eval = evaluate(&after);
 
-                    if (eval + current.piece_on(m.get_dest()).map_or(0, |a| PIECE_VALUE[a.to_index()]) + FUTILITY_MARGIN) <= max_eval {
-                        continue;
-                    }
+                    // if (eval + current.piece_on(m.get_dest()).map_or(0, |a| PIECE_VALUE[a.to_index()]) + FUTILITY_MARGIN) <= max_eval {
+                    //     continue;
+                    // }
                 }
 
                 moves.push(m);
