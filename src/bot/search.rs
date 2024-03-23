@@ -7,6 +7,8 @@ use std::sync::atomic::*;
 const NON_ZERO_WINDOW: usize = 1 << 31;
 const PV_NODE: usize = 1 << 30;
 
+const FUTILITY_MARGIN: i32 = 150;
+
 macro_rules! eq {
     ($a: expr, $b: expr) => { $a == $b };
     ($a: expr, $b: expr, $($rest: tt)+) => {
@@ -175,10 +177,23 @@ impl super::Game {
                 eq!(moves.get(mc - 8), moves.get(mc - 4), Some(&m))
             ) {
                 let after = current.make_move_new(m);
+
                 let mut ext = 0;
                 ext += (after.checkers().0 != 0) as usize;
                 ext += m.get_promotion().is_some() as usize;
                 let ext = ext.min(ext_depth);
+
+                let mut next_depth = depth as isize - 1 + ext as isize;
+                next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
+
+                // futility pruning
+                if next_depth == 1 && !mate_value(alpha) && !mate_value(beta) && current.checkers().0 == 0 && after.checkers().0 == 0 && MoveGen::new_legal(&after).len() != 0 {
+                    let eval = evaluate(&after);
+
+                    if (eval + current.piece_on(m.get_dest()).map_or(0, |a| PIECE_VALUE[a.to_index()]) + FUTILITY_MARGIN) <= max_eval {
+                        continue;
+                    }
+                }
 
                 moves.push(m);
 
@@ -227,9 +242,6 @@ impl super::Game {
                         1 - beta,
                     )
                 };
-
-                let mut next_depth = depth as isize - 1 + ext as isize;
-                next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
 
                 let mut eval = do_pvs(next_depth);
 
@@ -347,4 +359,9 @@ impl super::Game {
 
         buf
     }
+}
+
+#[inline(always)]
+fn mate_value(eval: i32) -> bool {
+    eval >= MAX_EVAL || eval <= MIN_EVAL
 }

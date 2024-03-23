@@ -1,6 +1,12 @@
 use chess::*;
 
 pub fn evaluate(board: &Board) -> i32 {
+    if matches!(board.status(), BoardStatus::Checkmate) {
+        return MIN_EVAL;
+    } else if matches!(board.status(), BoardStatus::Stalemate) {
+        return 0;
+    }
+
     let white_eval = eval_single(board, Color::White);
     let black_eval = eval_single(board, Color::Black);
 
