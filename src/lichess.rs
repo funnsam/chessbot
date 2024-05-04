@@ -83,19 +83,21 @@ impl LichessClient {
                         info!("`{}` challenged bot (id: `{}`)", user, id);
 
                         // FIX: post req
-                        if !client.execute(self.client
+                        if client.execute(self.client
                             .post(format!("https://lichess.org/api/challenge/{id}/accept"))
                             .header("Authorization", format!("Bearer {}", self.api_token))
                             .build().unwrap()
-                        ).await.unwrap().status().is_success() {
+                        ).await.ok().and_then(|a| a.status().is_success().then(|| ())).is_none() {
                             warn!("failed to accept challenge id {}", id);
                         }
                     } else {
-                        client.execute(client
+                        if client.execute(client
                             .post(format!("https://lichess.org/api/challenge/{id}/decline"))
                             .header("Authorization", format!("Bearer {}", self.api_token))
                             .build().unwrap()
-                        ).await.unwrap();
+                        ).await.ok().and_then(|a| a.status().is_success().then(|| ())).is_none() {
+                            warn!("failed to decline challenge id {}", id);
+                        }
                     }
                 },
                 Some("gameStart") => {
