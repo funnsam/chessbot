@@ -165,7 +165,7 @@ impl super::Game {
 
         let mut max_eval = if zero_window { alpha } else { MIN_EVAL };
         let mut alpha_raised = false;
-        let mut found_fail_high = true;
+        let mut found_fail_high = false;
 
         for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
             let mc = moves.len();
@@ -177,8 +177,12 @@ impl super::Game {
             ) {
                 let after = current.make_move_new(m);
                 let mut ext = 0;
-                ext += (after.checkers().0 != 0) as usize;
-                ext += m.get_promotion().is_some() as usize;
+
+                let checks = after.checkers().0 != 0;
+                let promotes = m.get_promotion().is_some();
+
+                ext += checks as usize;
+                ext += promotes as usize;
                 let ext = ext.min(ext_depth);
 
                 moves.push(m);
@@ -228,7 +232,7 @@ impl super::Game {
                         1 - beta,
                     )
                 };
-                let mut do_pvs = |depth: isize| if i < 5 || found_fail_high {
+                let mut do_pvs = |depth: isize| if i < 5 || found_fail_high || checks || promotes {
                     eval(depth)
                 } else {
                     eval(depth - 1)
