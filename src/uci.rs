@@ -1,7 +1,6 @@
 use std::io::{self, BufRead as _};
 use std::str::FromStr;
-use std::sync::mpsc::*;
-use chess::{Square, Board, ChessMove, Piece};
+use chess::*;
 use super::bot::*;
 
 pub struct UciClient {
@@ -12,11 +11,11 @@ impl UciClient {
         UciClient {}
     }
 
-    pub async fn start(self) {
+    pub fn start(self) {
         let mut lines = io::stdin().lock().lines();
 
-        let mut game = None;
-        let mut last_move = None;
+        let mut game = super::bot::Game::new(Board::default(), Vec::new());
+        let mut game_hash = game.board.get_hash();
 
         while let Some(Ok(l)) = lines.next() {
             info!("uci: `{}`", l);
@@ -28,48 +27,28 @@ impl UciClient {
                 },
                 Some(UciCommand::IsReady) => println!("readyok"),
                 Some(UciCommand::Stop) => std::process::exit(0),
-                Some(UciCommand::UciNewGame) => game = None,
-                Some(UciCommand::Position { position, moves }) => {
-                    last_move = moves.last().cloned();
+                Some(UciCommand::UciNewGame) => {},
+                Some(UciCommand::Position { mut position, moves }) => {
+                    if moves.len() == 0 || game_hash != position.get_hash() {
+                        game_hash = position.get_hash();
 
-                    if game.is_none() {
-                        let (moves_t, moves_r) = channel();
-                        let (event_t, event_r) = channel();
+                        for m in moves.iter() {
+                            position = position.make_move_new(*m);
+                        }
 
-                        let invert = moves.len() & 1 == 1;
-
-                        let mut new_game = Game::new("".to_string(), if !invert { position.side_to_move() } else { !position.side_to_move() }, position, moves_t);
-
-                        game = Some(event_t);
-
-                        let moves_len = moves.len();
-                        new_game.moves = moves.into_iter().take(moves_len.saturating_sub(1)).collect();
-
-                        tokio::spawn(async move {
-                            new_game.run(event_r);
-                        });
-
-                        tokio::spawn(async move {
-                            while let Ok(m) = moves_r.recv() {
-                                println!("bestmove {m}");
-                            }
-                        });
+                        game.board = position;
+                        game.moves = moves;
+                    } else {
+                        game.board = game.board.make_move_new(*moves.last().unwrap());
                     }
                 },
-                Some(UciCommand::Go { wtime, btime }) => if let Some(game) = game.as_ref() {
-                    if let Some(new_move) = last_move {
-                        _ = game.send(GameEvent::NextGameState {
-                            new_move,
-                            wtime,
-                            btime,
-                        });
+                Some(UciCommand::Go { wtime, btime }) => {
+                    game.time_ctrl = if matches!(game.board.side_to_move(), Color::White) {
+                        wtime
                     } else {
-                        _ = game.send(GameEvent::FullGameState {
-                            moves: vec![],
-                            wtime,
-                            btime,
-                        });
-                    }
+                        btime
+                    };
+                    println!("bestmove {}", game.play());
                 },
                 None => {
                     warn!("got unknown uci command");
@@ -87,11 +66,11 @@ enum UciCommand {
     UciNewGame,
     Position {
         position: Board,
-        moves: Vec<chess::ChessMove>,
+        moves: Vec<ChessMove>,
     },
     Go {
-        wtime: crate::bot::TimeControl,
-        btime: crate::bot::TimeControl,
+        wtime: TimeControl,
+        btime: TimeControl,
     },
     Stop,
 }
