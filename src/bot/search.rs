@@ -165,6 +165,7 @@ impl super::Game {
 
         let mut max_eval = if zero_window { alpha } else { MIN_EVAL };
         let mut alpha_raised = false;
+        let mut found_fail_high = true;
 
         for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
             let mc = moves.len();
@@ -182,7 +183,7 @@ impl super::Game {
 
                 moves.push(m);
 
-                let mut do_pvs = |depth: isize| if !zero_window {
+                let mut eval = |depth: isize| if !zero_window {
                     if !alpha_raised {
                         -self.alpha_beta_search(
                             after,
@@ -227,6 +228,11 @@ impl super::Game {
                         1 - beta,
                     )
                 };
+                let mut do_pvs = |depth: isize| if i < 5 || found_fail_high {
+                    eval(depth)
+                } else {
+                    eval(depth - 1)
+                };
 
                 let mut next_depth = depth as isize - 1 + ext as isize;
                 next_depth -= (i >= REDUCED_SEARCH_DEPTH) as isize;
@@ -242,6 +248,10 @@ impl super::Game {
 
                     if !self.times_up() {
                         eval = new_eval;
+                    }
+
+                    if new_eval <= -beta {
+                        found_fail_high = true;
                     }
                 }
 
