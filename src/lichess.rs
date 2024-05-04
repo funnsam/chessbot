@@ -105,19 +105,22 @@ impl LichessClient {
                     let id = game["id"].as_str().unwrap().to_string();
                     let user = game["opponent"]["username"].as_str().unwrap();
                     let color = match game["color"].as_str() {
-                        Some("black") => chess::Color::Black,
-                        Some("white") => chess::Color::White,
+                        Some("black") => Color::Black,
+                        Some("white") => Color::White,
                         v => {
                             warn!("unknown color `{:?}`", v);
                             continue;
                         },
                     };
                     let fen = game["fen"].as_str().unwrap();
-                    let board = chess::Board::from_str(fen).unwrap();
+                    let board = Board::from_str(fen).unwrap();
 
-                    info!("started a game with `{}` (id: `{}`, fen: `{}`)", user, id, fen);
+                    let init_fen = event["initialFen"].as_str().unwrap();
+                    let init_board = Board::from_str(init_fen).unwrap_or_else(Board::default);
 
-                    let game = crate::bot::Game::new(board, Vec::new());
+                    info!("started a game with `{}` (id: `{}`, fen: `{}`, init_fen: `{}`)", user, id, fen, init_fen);
+
+                    let game = crate::bot::Game::new(board, init_board, Vec::new());
                     let arc = Arc::clone(&self);
                     tokio::spawn(async move { arc.play_game(id, game, color).await });
                 },

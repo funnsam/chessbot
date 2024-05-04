@@ -14,7 +14,7 @@ impl UciClient {
     pub fn start(self) {
         let mut lines = io::stdin().lock().lines();
 
-        let mut game = super::bot::Game::new(Board::default(), Vec::new());
+        let mut game = super::bot::Game::new(Board::default(), Board::default(), Vec::new());
         let mut game_hash = game.board.get_hash();
 
         while let Some(Ok(l)) = lines.next() {
@@ -29,6 +29,8 @@ impl UciClient {
                 Some(UciCommand::Stop) => std::process::exit(0),
                 Some(UciCommand::UciNewGame) => {},
                 Some(UciCommand::Position { mut position, moves }) => {
+                    game.init_board = position.clone();
+
                     if moves.len() == 0 || game_hash != position.get_hash() {
                         game_hash = position.get_hash();
 

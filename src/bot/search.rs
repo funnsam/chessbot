@@ -5,14 +5,6 @@ use rayon::prelude::*;
 use std::sync::atomic::*;
 
 const NON_ZERO_WINDOW: usize = 1 << 31;
-const PV_NODE: usize = 1 << 30;
-
-macro_rules! eq {
-    ($a: expr, $b: expr) => { $a == $b };
-    ($a: expr, $b: expr, $($rest: tt)+) => {
-        $a == $b && eq!($b, $($rest)+)
-    }
-}
 
 impl super::Game {
     pub fn search(&mut self) -> (ChessMove, i32) {
@@ -130,12 +122,6 @@ impl super::Game {
 
         let tt_depth = depth + NON_ZERO_WINDOW * !zero_window as usize;
 
-        if let Some(t_e) = self.trans_table.get(current.get_hash()) {
-            if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= tt_depth {
-                return t_e.eval;
-            }
-        }
-
         if self.times_up() {
             return 0;
         }
@@ -167,15 +153,19 @@ impl super::Game {
         let mut alpha_raised = false;
         let mut found_fail_high = false;
 
+        moves.push(ChessMove::default());
+
         for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
-            let mc = moves.len();
-            let eval = if mc < 7 || !(
-                eq!(moves.get(mc - 7), moves.get(mc - 3)) && // chain of 3 fold
-                eq!(moves.get(mc - 6), moves.get(mc - 2)) && // detection
-                eq!(moves.get(mc - 5), moves.get(mc - 1)) &&
-                eq!(moves.get(mc - 4), Some(&m))
-            ) {
-                let after = current.make_move_new(m);
+            *moves.last_mut().unwrap() = m;
+            let after = current.make_move_new(m);
+
+            let mut eval = || if !three_fold(self.init_board.clone(), &moves) {
+                if let Some(t_e) = self.trans_table.get(after.get_hash()) {
+                    if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= tt_depth {
+                        return t_e.eval;
+                    }
+                }
+
                 let mut ext = 0;
 
                 let checks = after.checkers().0 != 0;
@@ -184,8 +174,6 @@ impl super::Game {
                 ext += checks as usize;
                 ext += promotes as usize;
                 let ext = ext.min(ext_depth);
-
-                moves.push(m);
 
                 let mut eval = |depth: isize| if !zero_window {
                     if !alpha_raised {
@@ -259,13 +247,6 @@ impl super::Game {
                     }
                 }
 
-                moves.pop();
-
-                // capture bonus
-                // if current.color_on(m.get_dest()) == Some(!current.side_to_move()) {
-                //     eval += PIECE_VALUE[current.piece_on(m.get_dest()).unwrap().to_index()] / 100;
-                // }
-
                 self.trans_table.insert(current.get_hash(),
                     super::trans_table::TransTableEntry {
                         depth: tt_depth,
@@ -279,7 +260,9 @@ impl super::Game {
                 0
             };
 
+            let eval = eval();
             if eval >= beta {
+                moves.pop();
                 return eval;
             } else if !zero_window && eval > max_eval {
                 max_eval = eval;
@@ -291,6 +274,7 @@ impl super::Game {
             }
         }
 
+        moves.pop();
         max_eval
     }
 
@@ -361,4 +345,49 @@ impl super::Game {
 
         buf
     }
+}
+
+fn three_fold(mut b: Board, m: &[ChessMove]) -> bool {
+    let mut cl = [ChessMove::default(); 24];
+    let mut c = 0;
+
+    let mut revbl = Vec::with_capacity(m.len());
+
+    for m in m.iter() {
+        let rev = !(matches!(b.piece_on(m.get_source()), Some(Piece::Pawn)) || b.piece_on(m.get_dest()).is_some());
+        let crw = b.castle_rights(Color::White);
+        let crb = b.castle_rights(Color::Black);
+
+        b = b.make_move_new(*m);
+
+        revbl.push(rev && b.castle_rights(Color::White) == crw && b.castle_rights(Color::Black) == crb);
+    }
+
+    'a: for (m, rev) in m.iter().rev().zip(revbl.iter().rev()) {
+        if *rev {
+            for cm in cl.iter_mut() {
+                if m.get_dest() == cm.get_source() {
+                    if m.get_source() == cm.get_dest() {
+                        c -= 1;
+                        if c == 0 { return true; }
+                        *cm = ChessMove::default();
+                        continue 'a;
+                    }
+
+                    *cm = ChessMove::new(m.get_source(), cm.get_dest(), None);
+                    continue 'a;
+                }
+            }
+
+            for cm in cl.iter_mut() {
+                if *cm == ChessMove::default() {
+                    *cm = *m;
+                    c += 1;
+                    continue 'a;
+                }
+            }
+        }
+    }
+
+    false
 }

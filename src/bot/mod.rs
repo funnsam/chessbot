@@ -9,6 +9,7 @@ use std::time::*;
 
 pub struct Game {
     pub board: chess::Board,
+    pub init_board: chess::Board,
     pub moves: Vec<ChessMove>,
 
     pub trans_table: trans_table::TransTable,
@@ -49,9 +50,10 @@ pub struct TimeControl {
 }
 
 impl Game {
-    pub fn new(board: Board, moves: Vec<ChessMove>) -> Self {
+    pub fn new(board: Board, init_board: Board, moves: Vec<ChessMove>) -> Self {
         Game {
             board,
+            init_board,
             moves,
 
             trans_table: trans_table::TransTable::new(),
@@ -72,6 +74,7 @@ impl Game {
         self.reserve_time();
         let (next, eval) = self.search();
         info!("next move: {} (eval: {})", next, eval);
+        self.moves.push(next);
         self.board = self.board.make_move_new(next);
 
         next
