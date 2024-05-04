@@ -1,15 +1,15 @@
 use reqwest::*;
-use std::sync::{atomic::*, mpsc::*, Arc};
+use std::sync::{atomic::*, Arc};
 use std::str::FromStr;
 use crate::bot::*;
+use chess::*;
 
 pub struct LichessClient {
     client: Client,
 
-    // FIX: see somewhere in LichessClient::send_game()
+    // FIX: see somewhere in LichessClient::send_move()
     api_token: String,
 
-    pub enable_pair: AtomicBool,
     pub active_games: AtomicUsize,
 }
 
@@ -33,7 +33,6 @@ impl LichessClient {
             client,
             api_token,
 
-            enable_pair: AtomicBool::new(false),
             active_games: AtomicUsize::new(0),
         }
     }
@@ -106,23 +105,27 @@ impl LichessClient {
 
                     info!("started a game with `{}` (id: `{}`, fen: `{}`)", user, id, fen);
 
-                    let (event_t, event_r) = channel();
+                    let game = crate::bot::Game::new(board, Vec::new());
+                    let arc = Arc::clone(&self);
+                    tokio::spawn(async move { arc.play_game(id, game, color).await });
 
-                    {
-                        let id = id.clone();
-                        let arc = Arc::clone(&self);
-                        tokio::spawn(async move { arc.listen_game(id, event_t).await });
-                    }
+                    // let (event_t, event_r) = channel();
 
-                    let (moves_t, moves_r) = channel();
+                    // {
+                    //     let id = id.clone();
+                    //     let arc = Arc::clone(&self);
+                    //     tokio::spawn(async move { arc.listen_game(id, event_t).await });
+                    // }
 
-                    {
-                        let id = id.clone();
-                        let arc = Arc::clone(&self);
-                        tokio::spawn(async move { arc.send_game(id, moves_r).await });
-                    }
+                    // let (moves_t, moves_r) = channel();
 
-                    tokio::spawn(async move { Game::new(id, color, board, moves_t).run(event_r) });
+                    // {
+                    //     let id = id.clone();
+                    //     let arc = Arc::clone(&self);
+                    //     tokio::spawn(async move { arc.send_move(id, moves_r).await });
+                    // }
+
+                    // tokio::spawn(async move { Game::new(id, color, board, moves_t).run(event_r) });
                 },
                 Some("gameFinish") => {
                     self.active_games.fetch_add(1, Ordering::Relaxed);
@@ -140,7 +143,13 @@ impl LichessClient {
         }
     }
 
-    async fn listen_game(self: Arc<Self>, game_id: String, events: Sender<GameEvent>) {
+    async fn play_game(self: Arc<Self>, game_id: String, mut game: crate::bot::Game, color: Color) {
+        let color_prefix = if matches!(color, Color::White) {
+            "w"
+        } else {
+            "b"
+        };
+
         let stream = self.client.execute(
             self.client
                 .get(format!("https://lichess.org/api/bot/game/stream/{game_id}"))
@@ -149,37 +158,46 @@ impl LichessClient {
         let mut stream = NdJsonIter::new(stream);
 
         while let Some(event) = stream.next_json().await {
+            dbg!("{:?}", event);
             match event["type"].as_str() {
                 Some("gameFull") => {
                     let state = &event["state"];
-                    events.send(GameEvent::FullGameState {
-                        moves: state["moves"].as_str().unwrap().to_string(),
-                        wtime: TimeControl {
-                            time_left: state["wtime"].as_usize().unwrap(),
-                            time_incr: state["winc"].as_usize().unwrap(),
-                        },
-                        btime: TimeControl {
-                            time_left: state["btime"].as_usize().unwrap(),
-                            time_incr: state["binc"].as_usize().unwrap(),
-                        },
-                        status: state["status"].as_str().unwrap().to_string(),
-                    }).unwrap();
+
+                    let moves = state["moves"].as_str().unwrap().split_whitespace();
+
+                    for m in moves {
+                        game.board = game.board.make_move_new(move_from_uci(m));
+                    }
+
+                    if game.board.side_to_move() == color {
+                        let time = state[color_prefix.to_string() + "time"].as_usize().unwrap();
+                        let inc = state[color_prefix.to_string() + "inc"].as_usize().unwrap();
+
+                        game.time_ctrl = TimeControl {
+                            time_left: time,
+                            time_incr: inc,
+                        };
+
+                        let next = game.play();
+                        self.send_move(&game_id, next).await;
+                    }
                 },
                 Some("gameState") => {
-                    let state = &event;
-                    // TODO: only send when is side to move
-                    events.send(GameEvent::NextGameState {
-                        moves: state["moves"].as_str().unwrap().to_string(),
-                        wtime: TimeControl {
-                            time_left: state["wtime"].as_usize().unwrap(),
-                            time_incr: state["winc"].as_usize().unwrap(),
-                        },
-                        btime: TimeControl {
-                            time_left: state["btime"].as_usize().unwrap(),
-                            time_incr: state["binc"].as_usize().unwrap(),
-                        },
-                        status: state["status"].as_str().unwrap().to_string(),
-                    }).unwrap();
+                    if game.board.side_to_move() != color {
+                        let m = event["moves"].as_str().unwrap().split_whitespace().last().unwrap();
+                        game.board = game.board.make_move_new(move_from_uci(m));
+
+                        let time = event[color_prefix.to_string() + "time"].as_usize().unwrap();
+                        let inc = event[color_prefix.to_string() + "inc"].as_usize().unwrap();
+
+                        game.time_ctrl = TimeControl {
+                            time_left: time,
+                            time_incr: inc,
+                        };
+
+                        let next = game.play();
+                        self.send_move(&game_id, next).await;
+                    }
                 },
                 Some(typ) => {
                     warn!("got unknown type of event `{}`", typ);
@@ -195,30 +213,28 @@ impl LichessClient {
         info!("stream ended (id: `{}`)", game_id);
     }
 
-    async fn send_game(self: Arc<Self>, game_id: String, moves: Receiver<chess::ChessMove>) {
-        while let Ok(m) = moves.recv() {
-            // FIX: this fucking post request is hanging the streams
-            // https://github.com/seanmonstar/reqwest/issues/2133
-            //
-            // let resp = self.client.execute(
-            //     self.client
-            //         .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
-            //         .build().unwrap()
-            // ).await.unwrap();
+    async fn send_move(&self, game_id: &str, m: ChessMove) {
+        // FIX: this fucking post request is hanging the streams
+        // https://github.com/seanmonstar/reqwest/issues/2133
+        //
+        // let resp = self.client.execute(
+        //     self.client
+        //         .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m_uci}"))
+        //         .build().unwrap()
+        // ).await.unwrap();
 
-            let client = Client::new();
-            let resp = client.execute(
-                client
-                    .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m}"))
-                    .header("Authorization", format!("Bearer {}", self.api_token))
-                    .build().unwrap()
+        let client = Client::new();
+        let resp = client.execute(
+            client
+            .post(format!("https://lichess.org/api/bot/game/{game_id}/move/{m}"))
+            .header("Authorization", format!("Bearer {}", self.api_token))
+            .build().unwrap()
             ).await.unwrap();
 
-            if !resp.status().is_success() {
-                let reason = json::parse(&resp.text().await.unwrap()).unwrap();
-                let reason = reason["error"].as_str().unwrap();
-                warn!("move {} invalid ({})", m, reason);
-            }
+        if !resp.status().is_success() {
+            let reason = json::parse(&resp.text().await.unwrap()).unwrap();
+            let reason = reason["error"].as_str().unwrap();
+            warn!("move {} invalid ({})", m, reason);
         }
     }
 
@@ -289,12 +305,6 @@ impl<S: Send + futures_util::stream::Stream<Item = Result<bytes::Bytes>> + std::
         }
         json::parse(std::str::from_utf8(&self.buffer).ok()?).ok()
     }
-}
-
-pub enum ServerCommand {
-    AutoChallenge {
-        enable: bool,
-    },
 }
 
 fn move_from_uci(m: &str) -> ChessMove {
