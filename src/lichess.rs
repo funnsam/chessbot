@@ -108,24 +108,6 @@ impl LichessClient {
                     let game = crate::bot::Game::new(board, Vec::new());
                     let arc = Arc::clone(&self);
                     tokio::spawn(async move { arc.play_game(id, game, color).await });
-
-                    // let (event_t, event_r) = channel();
-
-                    // {
-                    //     let id = id.clone();
-                    //     let arc = Arc::clone(&self);
-                    //     tokio::spawn(async move { arc.listen_game(id, event_t).await });
-                    // }
-
-                    // let (moves_t, moves_r) = channel();
-
-                    // {
-                    //     let id = id.clone();
-                    //     let arc = Arc::clone(&self);
-                    //     tokio::spawn(async move { arc.send_move(id, moves_r).await });
-                    // }
-
-                    // tokio::spawn(async move { Game::new(id, color, board, moves_t).run(event_r) });
                 },
                 Some("gameFinish") => {
                     self.active_games.fetch_add(1, Ordering::Relaxed);
@@ -157,8 +139,9 @@ impl LichessClient {
         ).await.unwrap().bytes_stream();
         let mut stream = NdJsonIter::new(stream);
 
+        let mut ignore_next = false;
+
         while let Some(event) = stream.next_json().await {
-            dbg!("{:?}", event);
             match event["type"].as_str() {
                 Some("gameFull") => {
                     let state = &event["state"];
@@ -166,7 +149,7 @@ impl LichessClient {
                     let moves = state["moves"].as_str().unwrap().split_whitespace();
 
                     for m in moves {
-                        game.board = game.board.make_move_new(move_from_uci(m));
+                        game.moves.push(move_from_uci(m));
                     }
 
                     if game.board.side_to_move() == color {
@@ -178,14 +161,17 @@ impl LichessClient {
                             time_incr: inc,
                         };
 
+                        ignore_next = true;
                         let next = game.play();
                         self.send_move(&game_id, next).await;
                     }
                 },
                 Some("gameState") => {
-                    if game.board.side_to_move() != color {
+                    if !ignore_next {
                         let m = event["moves"].as_str().unwrap().split_whitespace().last().unwrap();
-                        game.board = game.board.make_move_new(move_from_uci(m));
+                        let m = move_from_uci(m);
+                        game.board = game.board.make_move_new(m);
+                        game.moves.push(m);
 
                         let time = event[color_prefix.to_string() + "time"].as_usize().unwrap();
                         let inc = event[color_prefix.to_string() + "inc"].as_usize().unwrap();
@@ -195,8 +181,11 @@ impl LichessClient {
                             time_incr: inc,
                         };
 
+                        ignore_next = true;
                         let next = game.play();
                         self.send_move(&game_id, next).await;
+                    } else {
+                        ignore_next = false;
                     }
                 },
                 Some(typ) => {
