@@ -237,7 +237,16 @@ impl super::Game {
                 let mut do_pvs = |depth: isize| if i < 3 || found_fail_high || checks || promotes {
                     eval(depth)
                 } else {
-                    eval((2 * depth / 3).min(depth - 1))
+                    let e = eval(if is_pv {
+                        7 * depth / 9
+                    } else {
+                        2 * depth / 3
+                    }.min(depth - 1));
+                    if e > max_eval {
+                        eval(depth)
+                    } else {
+                        e
+                    }
                 };
 
                 let mut next_depth = depth as isize - 1 + ext as isize;
