@@ -115,12 +115,9 @@ impl LichessClient {
                     let fen = game["fen"].as_str().unwrap();
                     let board = Board::from_str(fen).unwrap();
 
-                    let init_fen = event["initialFen"].as_str().unwrap();
-                    let init_board = Board::from_str(init_fen).unwrap_or_else(Board::default);
+                    info!("started a game with `{}` (id: `{}`, fen: `{}`)", user, id, fen);
 
-                    info!("started a game with `{}` (id: `{}`, fen: `{}`, init_fen: `{}`)", user, id, fen, init_fen);
-
-                    let game = crate::bot::Game::new(board, init_board, Vec::new());
+                    let game = crate::bot::Game::new(board, Board::default(), Vec::new());
                     let arc = Arc::clone(&self);
                     tokio::spawn(async move { arc.play_game(id, game, color).await });
                 },
@@ -159,12 +156,16 @@ impl LichessClient {
         while let Some(event) = stream.next_json().await {
             match event["type"].as_str() {
                 Some("gameFull") => {
+                    let init_fen = event["initialFen"].as_str().unwrap();
+                    game.init_board = Board::from_str(init_fen).ok().unwrap_or_else(Board::default);
+
                     let state = &event["state"];
 
                     let moves = state["moves"].as_str().unwrap().split_whitespace();
 
                     for m in moves {
                         game.moves.push(move_from_uci(m));
+                        println!("{}", move_from_uci(m));
                     }
 
                     if game.board.side_to_move() == color {

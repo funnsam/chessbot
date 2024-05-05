@@ -71,6 +71,9 @@ impl super::Game {
                     }
                 }
 
+                moves.pop();
+                debug_assert_eq!(moves, self.moves);
+
                 if eval > max_eval.load(Ordering::Relaxed) {
                     max_eval.store(eval, Ordering::Relaxed);
                 }
@@ -154,12 +157,19 @@ impl super::Game {
         let mut found_fail_high = false;
 
         moves.push(ChessMove::default());
+        let moves = MoveRemover(moves);
+        struct MoveRemover<'a>(&'a mut Vec<ChessMove>);
+        impl<'a> Drop for MoveRemover<'a> {
+            fn drop(&mut self) {
+                self.0.pop();
+            }
+        }
 
         for (i, m) in self.move_in_order(&current).into_iter().enumerate() {
-            *moves.last_mut().unwrap() = m;
+            *moves.0.last_mut().unwrap() = m;
             let after = current.make_move_new(m);
 
-            let mut eval = || if !three_fold(self.init_board.clone(), &moves) {
+            let mut eval = || if zero_window || !three_fold(self.init_board.clone(), &moves.0) {
                 if let Some(t_e) = self.trans_table.get(after.get_hash()) {
                     if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= tt_depth {
                         return t_e.eval;
@@ -179,7 +189,7 @@ impl super::Game {
                     if !alpha_raised {
                         -self.alpha_beta_search(
                             after,
-                            moves,
+                            moves.0,
                             depth.max(0) as usize,
                             ext_depth - ext,
                             -beta,
@@ -190,7 +200,7 @@ impl super::Game {
                     } else {
                         let eval = -self.zero_window_search(
                             after,
-                            moves,
+                            moves.0,
                             depth.max(0) as usize,
                             ext_depth - ext,
                             -alpha,
@@ -199,7 +209,7 @@ impl super::Game {
                         if max_eval < eval && eval < beta {
                             -self.alpha_beta_search(
                                 after,
-                                moves,
+                                moves.0,
                                 depth.max(0) as usize,
                                 ext_depth - ext,
                                 -beta,
@@ -214,7 +224,7 @@ impl super::Game {
                 } else {
                     -self.zero_window_search(
                         after,
-                        moves,
+                        moves.0,
                         depth.max(0) as usize,
                         ext_depth - ext,
                         1 - beta,
@@ -247,7 +257,7 @@ impl super::Game {
                     }
                 }
 
-                self.trans_table.insert(current.get_hash(),
+                self.trans_table.insert(after.get_hash(),
                     super::trans_table::TransTableEntry {
                         depth: tt_depth,
                         eval,
@@ -262,7 +272,6 @@ impl super::Game {
 
             let eval = eval();
             if eval >= beta {
-                moves.pop();
                 return eval;
             } else if !zero_window && eval > max_eval {
                 max_eval = eval;
@@ -274,7 +283,6 @@ impl super::Game {
             }
         }
 
-        moves.pop();
         max_eval
     }
 
@@ -353,12 +361,24 @@ fn three_fold(mut b: Board, m: &[ChessMove]) -> bool {
 
     let mut revbl = Vec::with_capacity(m.len());
 
-    for m in m.iter() {
-        let rev = !(matches!(b.piece_on(m.get_source()), Some(Piece::Pawn)) || b.piece_on(m.get_dest()).is_some());
+    for m2 in m.iter() {
+        let rev = !(matches!(b.piece_on(m2.get_source()), Some(Piece::Pawn)) || b.piece_on(m2.get_dest()).is_some());
         let crw = b.castle_rights(Color::White);
         let crb = b.castle_rights(Color::Black);
 
-        b = b.make_move_new(*m);
+        // Error: rnbqkb1r/pppppppp/5n2/8/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 1
+        // Error: e2e4
+        // Error: g8f6
+        // Error: g1f3
+        // Error: b1c3
+        if !b.legal(*m2) {
+            error!("{}", b);
+            for m in m.iter(){
+            error!("{}", m);
+            }
+            std::process::exit(1);
+        }
+        b = b.make_move_new(*m2);
 
         revbl.push(rev && b.castle_rights(Color::White) == crw && b.castle_rights(Color::Black) == crb);
     }
