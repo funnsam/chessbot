@@ -186,8 +186,7 @@ impl LichessClient {
                     if !ignore_next {
                         let m = event["moves"].as_str().unwrap().split_whitespace().last().unwrap();
                         let m = move_from_uci(m);
-                        game.board = game.board.make_move_new(m);
-                        game.moves.push(m);
+                        game.make_move(m);
 
                         let time = event[color_prefix.to_string() + "time"].as_usize().unwrap();
                         let inc = event[color_prefix.to_string() + "inc"].as_usize().unwrap();

@@ -74,10 +74,14 @@ impl Game {
         self.reserve_time();
         let (next, eval) = self.search();
         info!("next move: {} (eval: {})", next, eval);
-        self.moves.push(next);
-        self.board = self.board.make_move_new(next);
+        self.make_move(next);
 
         next
+    }
+
+    pub fn make_move(&mut self, m: ChessMove) {
+        self.board = self.board.make_move_new(m);
+        self.moves.push(m);
     }
 
     // pub fn play(&mut self) {
