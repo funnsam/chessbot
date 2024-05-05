@@ -41,7 +41,7 @@ impl UciClient {
                         game.board = position;
                         game.moves = moves;
                     } else {
-                        game.board = game.board.make_move_new(*moves.last().unwrap());
+                        game.make_move(*moves.last().unwrap());
                     }
                 },
                 Some(UciCommand::Go { wtime, btime }) => {

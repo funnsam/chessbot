@@ -17,7 +17,6 @@ impl super::Game {
             moves.push((m, eval));
         }
 
-        // reducing move time if there is a single move left
         if moves.len() == 1 {
             dbg!("only move is {}", moves[0].0);
             return moves[0];
@@ -30,13 +29,18 @@ impl super::Game {
             let start = std::time::Instant::now();
 
             moves.par_iter_mut().enumerate().for_each(|(j, (m, e))| {
+                let mut moves = self.moves.clone();
+                moves.push(*m);
+
+                if three_fold(self.init_board.clone(), &moves) {
+                    *e = 0;
+                    return;
+                }
+
                 let board = self.board.make_move_new(*m);
 
                 let mut depth = i;
                 depth -= (j >= REDUCED_SEARCH_DEPTH) as usize;
-
-                let mut moves = self.moves.clone();
-                moves.push(*m);
 
                 let mut eval = -self.alpha_beta_search(
                     board,
@@ -45,7 +49,6 @@ impl super::Game {
                     SEARCH_EXTENSION_LIMIT,
                     MIN_EVAL,
                     MAX_EVAL,
-                    // -max_eval.load(Ordering::Relaxed),
                     true,
                     false,
                 );
@@ -115,8 +118,6 @@ impl super::Game {
         is_pv: bool,
         zero_window: bool,
     ) -> i32 {
-        self.searched.fetch_add(1, Ordering::Relaxed);
-
         if matches!(current.status(), BoardStatus::Checkmate) {
             return MIN_EVAL;
         } else if matches!(current.status(), BoardStatus::Stalemate) {
@@ -124,6 +125,15 @@ impl super::Game {
         }
 
         let tt_depth = depth + NON_ZERO_WINDOW * !zero_window as usize;
+
+        if let Some(t_e) = self.trans_table.get(current.get_hash()) {
+            if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= tt_depth {
+                return t_e.eval;
+            }
+        }
+
+
+        self.searched.fetch_add(1, Ordering::Relaxed);
 
         if self.times_up() {
             return 0;
@@ -169,13 +179,7 @@ impl super::Game {
             *moves.0.last_mut().unwrap() = m;
             let after = current.make_move_new(m);
 
-            let mut eval = || if zero_window || !three_fold(self.init_board.clone(), &moves.0) {
-                if let Some(t_e) = self.trans_table.get(after.get_hash()) {
-                    if (!is_pv || (alpha < t_e.eval && t_e.eval < beta)) && t_e.depth >= tt_depth {
-                        return t_e.eval;
-                    }
-                }
-
+            let mut eval = || {
                 let mut ext = 0;
 
                 let checks = after.checkers().0 != 0;
@@ -266,14 +270,17 @@ impl super::Game {
                 );
 
                 eval
-            } else {
-                0
             };
 
             let eval = eval();
+
+            if self.times_up() {
+                return 0;
+            }
+
             if eval >= beta {
                 return eval;
-            } else if !zero_window && eval > max_eval {
+            } else if eval > max_eval {
                 max_eval = eval;
 
                 if eval > alpha {
@@ -366,18 +373,6 @@ fn three_fold(mut b: Board, m: &[ChessMove]) -> bool {
         let crw = b.castle_rights(Color::White);
         let crb = b.castle_rights(Color::Black);
 
-        // Error: rnbqkb1r/pppppppp/5n2/8/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 1
-        // Error: e2e4
-        // Error: g8f6
-        // Error: g1f3
-        // Error: b1c3
-        if !b.legal(*m2) {
-            error!("{}", b);
-            for m in m.iter(){
-            error!("{}", m);
-            }
-            std::process::exit(1);
-        }
         b = b.make_move_new(*m2);
 
         revbl.push(rev && b.castle_rights(Color::White) == crw && b.castle_rights(Color::Black) == crb);
